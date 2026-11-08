@@ -1,0 +1,101 @@
+\documentclass[../LuanVan.tex]{subfiles}
+\begin{document}
+\chapter*{MỞ ĐẦU}
+\addcontentsline{toc}{chapter}{MỞ ĐẦU}
+
+%==============================================================
+\section*{1. Tính cấp thiết của đề tài}
+
+Trong kỷ nguyên số hóa, an toàn thông tin dựa chủ yếu vào các hệ mật mã khóa công khai truyền thống như RSA hay trao đổi khóa Diffie--Hellman/ECDH. Độ an toàn của các hệ mật này dựa trên độ khó của bài toán phân tích số nguyên và bài toán logarit rời rạc. Tuy nhiên, sự phát triển không ngừng của điện toán lượng tử đặt ra mối đe dọa lớn: với thuật toán Shor, một máy tính lượng tử đủ mạnh có thể giải các bài toán trên trong thời gian đa thức, đặt toàn bộ hạ tầng an ninh mạng hiện tại vào nguy cơ bị phá vỡ.
+
+Để đối phó với viễn cảnh này, việc chuyển đổi sang mật mã hậu lượng tử (PQC) là yêu cầu cấp thiết. Viện Tiêu chuẩn và Công nghệ Quốc gia Hoa Kỳ (NIST) đã khởi động tiến trình chuẩn hóa PQC từ năm 2016 và công bố tiêu chuẩn FIPS~203 (\textit{Module-Lattice-Based Key-Encapsulation Mechanism}, ML-KEM) vào ngày 13/8/2024, được xây dựng trên thuật toán CRYSTALS-Kyber \cite{nist2024fips203}. Kyber là một cơ chế đóng gói khóa (KEM) dựa trên lưới đại số, có độ an toàn dựa trên bài toán Module Learning With Errors (M-LWE), được xem là khó ngay cả với máy tính lượng tử \cite{bos2018kyber,chi2015lattice}. Nhờ có sự cân bằng giữa kích thước khóa, độ an toàn và tốc độ thực thi, Kyber/ML-KEM đang được triển khai rộng rãi trong các giao thức TLS, trình duyệt web và nhiều hệ thống bảo mật khác.
+
+Tuy nhiên, độ an toàn về mặt toán học không đồng nghĩa với độ an toàn trong triển khai thực tế. Một thuật toán an toàn về lý thuyết vẫn có thể bị khai thác nếu cài đặt của nó làm rò rỉ thông tin về khóa bí mật qua các \textit{kênh bên} (side-channel) như thời gian thực thi, mức tiêu thụ điện năng hoặc bức xạ điện từ. Nhiều lỗ hổng dạng này đã được phát hiện trên chính các cài đặt tham chiếu và thư viện mã nguồn mở phổ biến của Kyber, điển hình là lớp lỗ hổng KyberSlash công bố cuối năm 2023, đầu năm 2024 \cite{bernstein2025kyberslash}. Dù được thiết kế theo nguyên tắc \textit{constant-time} ở mức mã nguồn, các cài đặt này vẫn có thời gian giải mã phụ thuộc vào toán hạng bí mật (do các phép chia trong bước nén/giải nén đa thức) trên một số kiến trúc CPU, cho phép kẻ tấn công suy luận khóa bí mật từ việc đo thời gian xử lý nhiều lần. Bên cạnh tấn công thời gian, nhiều công trình học thuật cũng chỉ ra khả năng khai thác kênh năng lượng đối với Kyber \cite{wang2023bitsliced,ji2023masked}.
+
+Các giải pháp phòng vệ hiện có gồm bốn nhóm chính: lập trình \textit{constant-time}, \textit{hiding}, \textit{masking} và \textit{shuffling}. Constant-time là biện pháp cơ bản nhưng không triệt để, như trường hợp KyberSlash đã cho thấy. Hiding đòi hỏi can thiệp phần cứng chuyên biệt. Masking là hướng được nghiên cứu nhiều nhất cho Kyber, nhưng các sơ đồ masking đầy đủ thường có chi phí hiệu năng lớn (từ vài lần đến hàng chục lần so với cài đặt gốc) và độ phức tạp cài đặt cao. Ngoài ra, còn thiếu các nghiên cứu định lượng rõ ràng về mối quan hệ đánh đổi giữa mức độ an toàn đạt được và chi phí hiệu năng phải trả.
+
+Từ thực trạng đó, đề tài tập trung vào bước nhạy cảm nhất của quá trình giải đóng gói, là phép tính $m' = v - \mathbf{s}^{T}\mathbf{u}$ nơi khóa bí mật $\mathbf{s}$ được sử dụng trực tiếp. Đề tài phân tích và đánh giá \textbf{KyberGuard}, một cài đặt Kyber tăng cường chống tấn công kênh bên bằng kỹ thuật mặt nạ cộng tính (\textit{NTT Domain Blinding}), nhằm cân bằng giữa mức độ bảo vệ và chi phí hiệu năng thay vì che toàn bộ pipeline tính toán. Vì vậy, đề tài có tính cấp thiết cả về mặt khoa học lẫn thực tiễn.
+
+%==============================================================
+\section*{2. Mục tiêu nghiên cứu}
+
+Đề tài đặt ra các mục tiêu cụ thể sau:
+\begin{enumerate}
+    \item Nghiên cứu, hệ thống hóa nền tảng lý thuyết của mật mã dựa trên lưới đại số, bài toán Module-LWE và cơ chế đóng gói khóa Kyber, làm cơ sở để phân tích các điểm rò rỉ thông tin tiềm ẩn trong quá trình giải đóng gói.
+    \item Thiết kế và triển khai KyberGuard, một cài đặt Kyber1024 bằng Python theo đặc tả FIPS~203, được tăng cường khả năng chống tấn công kênh bên tại bước tính $\mathbf{s}^{T}\mathbf{u}$ thông qua kỹ thuật \textit{NTT Blinding}.
+    \item Kiểm chứng tính đúng đắn của giải pháp (kết quả giải mã có blinding trùng với giải mã chuẩn), đồng thời đánh giá mức độ cải thiện an toàn so với cài đặt NTT gốc bằng mô phỏng tấn công thời gian (\textit{Timing Attack}) và tấn công phân tích năng lượng vi sai (DPA, mô hình Hamming Weight).
+    \item Đo lường và phân tích chi phí hiệu năng (overhead về thời gian xử lý) của giải pháp so với NTT gốc, từ đó đưa ra khuyến nghị về ngữ cảnh áp dụng phù hợp.
+\end{enumerate}
+
+%==============================================================
+\section*{3. Đối tượng và phạm vi nghiên cứu}
+
+\textbf{Đối tượng nghiên cứu:} cơ chế đóng gói khóa CRYSTALS-Kyber (ML-KEM, FIPS~203), cụ thể là bước giải mã của CPAPKE (phép tính $m' = v - \mathbf{s}^{T}\mathbf{u}$ trong miền NTT), và kỹ thuật che giấu khóa bí mật bằng ngẫu nhiên hóa trong miền NTT.
+
+\textbf{Phạm vi nghiên cứu:}
+\begin{itemize}
+    \item Biến thể \textbf{Kyber1024} ($k=4$, $n=256$, $q=3329$, $\eta_1=\eta_2=2$, $d_u=11$, $d_v=5$), mức an toàn NIST Level~5.
+    \item Cài đặt đầy đủ KeyGen, Encrypt, Decrypt (CPAPKE) và CCA-KEM theo biến đổi Fujisaki--Okamoto bằng ngôn ngữ Python (CPython 3.11/3.12); kỹ thuật bảo vệ chỉ được áp dụng có chọn lọc tại bước giải mã.
+    \item Hai loại tấn công kênh bên được xét: tấn công thời gian và DPA theo mô hình Hamming Weight, thực hiện ở mức mô phỏng phần mềm. Việc đo đạc trên phần cứng thực (vết năng lượng, bức xạ điện từ) không nằm trong phạm vi đề tài.
+    \item Hiệu năng được đánh giá qua độ trễ (thời gian giải mã) trong môi trường Python, so sánh giữa NTT gốc và NTT + Blinding.
+\end{itemize}
+
+%==============================================================
+\section*{4. Phương pháp nghiên cứu}
+
+Đề tài kết hợp nghiên cứu lý thuyết và nghiên cứu thực nghiệm:
+\begin{itemize}
+    \item \textbf{Nghiên cứu lý thuyết:} tổng hợp tài liệu về lưới đại số, bài toán Module-LWE, thuật toán Kyber \cite{bos2018kyber,chi2015lattice}, tiêu chuẩn FIPS~203 \cite{nist2024fips203} và các công trình về tấn công/phòng thủ kênh bên \cite{bernstein2025kyberslash,wang2023bitsliced}. Trên cơ sở đó, đề tài phân tích điểm rò rỉ và chứng minh tính đúng đắn của kỹ thuật blinding: với $\hat{\mathbf{s}}^{*}=\hat{\mathbf{s}}+\hat{\mathbf{r}}$ thì
+    \[
+        \hat{\mathbf{s}}^{*T}\hat{\mathbf{u}} - \hat{\mathbf{r}}^{T}\hat{\mathbf{u}} = \hat{\mathbf{s}}^{T}\hat{\mathbf{u}}.
+    \]
+    \item \textbf{Thiết kế và triển khai phần mềm:} xây dựng cài đặt Kyber1024 bằng Python, quản lý dự án bằng Poetry và Invoke, kiểm thử bằng bộ 70 unit test (độ phủ 100\%) và tích hợp CI qua GitHub Actions.
+    \item \textbf{Kiểm chứng tính đúng đắn:} so sánh kết quả \texttt{decrypt\_ntt()} và \\ \texttt{decrypt\_ntt\_blinded()} trên nhiều cặp khóa.
+    \item \textbf{Đánh giá an toàn bằng mô phỏng:} thực hiện tấn công thời gian ($80$ mẫu) và DPA ($120$ lần giải mã) trên cả hai phiên bản, dùng hệ số tương quan Pearson $r$ giữa dữ liệu mô phỏng và oracle Hamming Weight làm thước đo rò rỉ. Tiêu chí chấp nhận: $|r|>0{,}5$ ở bản gốc (tấn công khả thi), $|r|<0{,}1$ ở bản blinding (tấn công bị chặn), mức giảm tương quan trên $90\%$.
+    \item \textbf{Đánh giá hiệu năng:} đo thời gian giải mã bằng \texttt{time.perf\_counter\_ns()}, lấy trung vị của 3 lần lặp cho mỗi mẫu; thống kê giá trị trung bình, độ lệch chuẩn, hệ số biến thiên (CV) và overhead $\dfrac{\bar{t}_{\text{blind}}-\bar{t}_{\text{ntt}}}{\bar{t}_{\text{ntt}}}\times 100\%$, với ngưỡng chấp nhận $<20\%$.
+\end{itemize}
+
+%==============================================================
+\section*{5. Đóng góp mới của luận văn}
+
+Đề tài dự kiến mang lại các đóng góp sau:
+\begin{itemize}
+    \item \textbf{Về kỹ thuật:} đề xuất và triển khai sơ đồ giải đóng gói Kyber1024 tăng cường (NTT Blinding) có chi phí cài đặt thấp, giữ nguyên các bước KeyGen và Encaps của Kyber chuẩn, chỉ can thiệp có chọn lọc tại bước nhạy cảm nhất, nên dễ tích hợp vào các cài đặt hiện có. Các biến trung gian nhạy cảm ($\mathbf{s}^{*}$, $\mathbf{r}_{blind}$) được xóa khỏi bộ nhớ sau khi sử dụng.
+    \item \textbf{Về đánh giá an toàn:} cung cấp phân tích và kiểm định mô phỏng về khả năng giảm rò rỉ thông tin (Timing, DPA) của giải pháp so với cài đặt NTT gốc.
+    \item \textbf{Về hiệu năng:} cung cấp số liệu định lượng về overhead khi áp dụng blinding, làm cơ sở tham khảo cho việc lựa chọn giải pháp bảo vệ phù hợp trong các ngữ cảnh triển khai khác nhau.
+    \item \textbf{Về học thuật:} hệ thống hóa nền tảng lý thuyết lưới đại số, Module-LWE và cơ chế Kyber, đồng thời cung cấp một khung triển khai mã nguồn mở, có kiểm thử đầy đủ, có thể dùng làm tài liệu tham khảo cho các nghiên cứu về mật mã hậu lượng tử và an toàn cài đặt.
+\end{itemize}
+
+%==============================================================
+\section*{6. Bố cục luận văn}
+
+Ngoài phần Mở đầu, Kết luận, Danh mục tài liệu tham khảo và Phụ lục, nội dung chính của luận văn được tổ chức thành ba chương như sau:
+
+\textbf{Mở đầu.} Trình bày tính cấp thiết của đề tài, mục tiêu, đối tượng và phạm vi, phương pháp nghiên cứu và những đóng góp mới của luận văn.
+
+\textbf{Chương 1. Cơ sở lý thuyết.} Chương này trình bày các kiến thức nền tảng phục vụ cho các chương sau, gồm bốn nội dung chính:
+\begin{itemize}
+    \item Tổng quan về mật mã hậu lượng tử, bối cảnh chuẩn hóa của NIST, vị thế của CRYSTALS-Kyber (ML-KEM, FIPS~203) và khái quát về tấn công kênh bên (tấn công thời gian, tấn công phân tích năng lượng).
+    \item Cơ sở toán học của Kyber: cấu trúc đại số (nhóm, vành, trường hữu hạn, vành đa thức thương $R_q=\mathbb{Z}_q[x]/(x^n+1)$), mật mã dựa trên lưới đại số, bài toán Module-LWE, phép biến đổi NTT (Number Theoretic Transform) và các hàm băm dựa trên SHA-3.
+    \item Thuật toán đóng gói khóa CRYSTALS-Kyber: quy trình sinh khóa, đóng gói (Encaps) và giải đóng gói (Decaps) của CPAPKE, biến đổi Fujisaki--Okamoto để đạt an toàn IND-CCA2 và bộ tham số của Kyber1024.
+    \item Tổng quan các nghiên cứu liên quan: các tấn công kênh bên trên Kyber (tiêu biểu là KyberSlash) và các giải pháp phòng thủ hiện có cùng hạn chế của chúng.
+\end{itemize}
+
+\textbf{Chương 2. Thiết kế mô hình và phương pháp tăng cường bảo mật chống tấn công kênh bên.} Chương này phân tích điểm rò rỉ và trình bày giải pháp đề xuất:
+\begin{itemize}
+    \item Phân tích an toàn kênh bên trên cài đặt Kyber nguyên bản: mô hình đe dọa và điểm rò rỉ tại bước giải mã $m' = v - \mathbf{s}^{T}\mathbf{u}$, nơi khóa bí mật $\mathbf{s}$ được dùng trực tiếp trong phép nhân đa thức miền NTT.
+    \item Đề xuất kỹ thuật \textit{NTT Domain Blinding} của KyberGuard: kiến trúc tổng thể, cơ chế che giấu khóa bí mật bằng đa thức ngẫu nhiên $\hat{\mathbf{r}}$ (tính trên $\hat{\mathbf{s}}^{*}=\hat{\mathbf{s}}+\hat{\mathbf{r}}$ rồi khử $\hat{\mathbf{r}}$), và việc xóa an toàn các biến trung gian nhạy cảm.
+    \item Phân tích tính đúng đắn toán học của giải pháp và đánh giá lý thuyết về độ phức tạp tính toán so với NTT gốc.
+\end{itemize}
+
+\textbf{Chương 3. Triển khai thực nghiệm và đánh giá kết quả.} Chương này trình bày việc cài đặt và kiểm chứng giải pháp:
+\begin{itemize}
+    \item Môi trường và công cụ thực nghiệm: cấu hình phần cứng tham chiếu, ngôn ngữ Python (CPython 3.11/3.12), các thư viện NumPy, PyCryptodome, cùng công cụ quản lý dự án Poetry và Invoke.
+    \item Cài đặt phiên bản Kyber1024 nguyên bản và phiên bản tăng cường (\texttt{decrypt\_ntt} và \texttt{decrypt\_ntt\_blinded}), kiểm thử bằng bộ unit test và kiểm chứng tính đúng đắn.
+    \item Đánh giá an toàn kênh bên bằng mô phỏng tấn công thời gian và tấn công DPA (mô hình Hamming Weight), sử dụng hệ số tương quan Pearson để so sánh mức rò rỉ giữa hai phiên bản.
+    \item Đánh giá hiệu năng (thời gian giải mã, hệ số biến thiên, overhead), phân tích sự đánh đổi giữa mức độ an toàn và chi phí hiệu năng, cùng thảo luận kết quả.
+\end{itemize}
+
+\textbf{Kết luận và hướng phát triển.} Tổng kết các kết quả đạt được và đóng góp chính của luận văn, nêu các hạn chế của đề tài, đồng thời đề xuất các hướng nghiên cứu tiếp theo.
+
+\end{document}

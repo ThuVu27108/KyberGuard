@@ -1,0 +1,245 @@
+\documentclass[../LuanVan.tex]{subfiles}
+\begin{document}
+ 
+Chương này xác định phạm vi bảo vệ mà đặc tả Kyber cung cấp, từ đó chỉ ra khoảng trống mà cài đặt thực tế phải tự lấp đầy (Mục~\ref{sec:scope}); điểm qua các tấn công kênh bên đã biết nhằm vào Kyber cùng các hướng phòng chống hiện có (Mục~\ref{sec:attacks}); trình bày kiến trúc tổng thể của KyberGuard (Mục~\ref{sec:arch}); và phân tích tính đúng đắn cũng như giới hạn đảm bảo của thiết kế (Mục~\ref{sec:correctness}). Các kiến thức nền về vành $R_q$, phép biến đổi NTT và bài toán M-LWE đã được trình bày ở Chương~\ref{chap:background} nên không nhắc lại chi tiết ở đây.
+ 
+% ============================================================
+\section{Phạm vi bảo vệ của Kyber}
+\label{sec:scope}
+ 
+\subsection{Đảm bảo an toàn mà đặc tả cung cấp}
+ 
+CRYSTALS-Kyber, được chuẩn hóa thành ML-KEM trong FIPS~203~\cite{FIPS203}, là cơ chế đóng gói khóa đạt an toàn IND-CCA2. Đảm bảo này gồm hai tầng. Tầng thứ nhất là sơ đồ mã hóa khóa công khai IND-CPA, có độ an toàn quy về độ khó của bài toán Module-LWE (M-LWE) trên vành $R_q=\mathbb{Z}_q[x]/(x^{256}+1)$ với $q=3329$~\cite{Avanzi21,LangloisStehle15}. Tầng thứ hai là biến đổi Fujisaki--Okamoto (FO) có \emph{từ chối ngầm} (implicit rejection), nâng sơ đồ lên IND-CCA2 trong mô hình oracle ngẫu nhiên, cả cổ điển lẫn lượng tử~\cite{fo1999,hhk2017}. Với Kyber1024, đối tượng của luận văn ($k=4$, $\eta_1=\eta_2=2$, $d_u=11$, $d_v=5$), đặc tả nhắm mức an toàn NIST Level~5 và xác suất lỗi giải mã khoảng $2^{-174}$~\cite{Avanzi21}.
+ 
+Quy trình giải đóng gói (Decaps) có cấu trúc như Thuật toán~\ref{alg:decaps}. Thuật toán trình bày theo đặc tả Kyber vòng~3 (nguồn gốc của mã nguồn); ML-KEM trong FIPS~203 khác ở chi tiết dẫn xuất khóa (khóa chung là $K'$ lấy trực tiếp từ $G(m'\,\|\,h)$, còn giá trị từ chối được tính bằng $J(z\,\|\,c)$), nhưng cấu trúc giải mã--tái mã hóa--so sánh--từ chối ngầm là như nhau, nên các phân tích ở chương này áp dụng cho cả hai~\cite{FIPS203,Avanzi21}.
+ 
+\begin{algorithm}[H]
+\caption{Giải đóng gói CCA của Kyber}
+\label{alg:decaps}
+\begin{algorithmic}[1]
+\Require khóa bí mật $sk=(\mathbf{s},pk,h=H(pk),z)$, bản mã $c=(\mathbf{u},v)$
+\State $m' \gets \mathsf{Decrypt}(\mathbf{s},c)$ \Comment{$m'=\mathsf{Compress}_q\big(v-\mathbf{s}^{T}\mathbf{u},\,1\big)$}
+\State $(\overline{K}',r') \gets G(m'\,\|\,h)$
+\State $c' \gets \mathsf{Encrypt}(pk,m';r')$ \Comment{tái mã hóa}
+\If{$c = c'$}
+  \State \Return $K \gets \mathrm{KDF}(\overline{K}'\,\|\,H(c))$
+\Else
+  \State \Return $K \gets \mathrm{KDF}(z\,\|\,H(c))$ \Comment{từ chối ngầm}
+\EndIf
+\end{algorithmic}
+\end{algorithm}
+ 
+\subsection{Mô hình đe dọa ngầm định của chứng minh an toàn}
+ 
+Các chứng minh nói trên giả định kẻ tấn công tương tác theo kiểu \emph{hộp đen}: nó có thể truy vấn oracle giải đóng gói trên các bản mã tùy chọn và quan sát khóa chung đầu ra, nhưng không thấy giá trị trung gian nào, không đo được thời gian hay năng lượng, và không gây lỗi cho phần cứng~\cite{hhk2017}. Giả định này hợp lý ở mức giao thức nhưng không còn đúng khi thuật toán chạy trên thiết bị vật lý. Do đó các lớp tấn công trong Bảng~\ref{tab:scope} nằm \emph{ngoài} phạm vi của đảm bảo toán học.
+ 
+\begin{table}[t]
+\centering
+\caption{Phạm vi bảo vệ của đặc tả Kyber đối với các lớp tấn công.}
+\label{tab:scope}
+\small
+\begin{tabular}{@{}p{3.6cm}p{3.2cm}p{6.4cm}@{}}
+\toprule
+\textbf{Lớp tấn công} & \textbf{Đặc tả bảo vệ?} & \textbf{Ghi chú} \\
+\midrule
+Giải bài toán lưới (M-LWE) & Có & Cơ sở của chứng minh an toàn, kể cả với đối thủ lượng tử. \\
+Chosen-ciphertext ở mức giao thức & Có & Nhờ biến đổi FO và từ chối ngầm. \\
+Tấn công định thời & Không (thuộc về cài đặt) & Chứng minh không mô hình hóa thời gian thực thi. \\
+Phân tích năng lượng/điện từ & Không (thuộc về cài đặt) & Cần biện pháp riêng: che mặt nạ, ẩn, ngẫu nhiên hóa. \\
+Tấn công lỗi (fault) & Không (thuộc về cài đặt) & Ngoài phạm vi luận văn này. \\
+\bottomrule
+\end{tabular}
+\end{table}
+ 
+\subsection{Tài sản cần bảo vệ và điểm rò rỉ}
+ 
+Trong Thuật toán~\ref{alg:decaps}, các giá trị nhạy cảm gồm khóa bí mật dài hạn $\mathbf{s}$, thông điệp khôi phục $m'$ (cùng các giá trị dẫn xuất như $\overline{K}'$, $r'$) và giá trị từ chối $z$. Điểm đáng chú ý nhất là bước~1: khóa \emph{cố định} $\mathbf{s}$ được nhân với đầu vào $\mathbf{u}$ do kẻ tấn công \emph{chọn và biết}. Cấu hình ``khóa cố định, đầu vào biết trước, nhiều lần đo'' này là điều kiện lý tưởng cho phân tích năng lượng vi sai~\cite{KocherJJ99,MangardOP07}. Ở phía đóng gói, các giá trị ngẫu nhiên $\mathbf{r}$ chỉ dùng một lần nên khó khai thác hơn, nhưng vẫn có thể bị tấn công bằng một vết đo duy nhất~\cite{Primas17}.
+ 
+\subsection{Phạm vi và giả thiết của luận văn}
+ 
+Luận văn tập trung vào bước giải mã trong Decaps, nơi khóa dài hạn $\mathbf{s}$ được sử dụng. Kẻ tấn công được giả thiết là \emph{thụ động} ở tầng vật lý (đo thời gian và năng lượng), có thể gửi nhiều bản mã tùy chọn đến cùng một khóa, và bị giới hạn ở tấn công bậc một (mỗi lần chỉ khai thác một điểm rò rỉ). Rò rỉ năng lượng được mô hình hóa bằng mô hình trọng số Hamming (HW) cộng nhiễu, theo thông lệ của phân tích tương quan~\cite{BrierCO04}. Tấn công lỗi, tấn công vi kiến trúc (cache) và tấn công bậc cao nằm ngoài phạm vi.
+ 
+% ============================================================
+\section{Một số tấn công đã biết và hướng phòng chống hiện có}
+\label{sec:attacks}
+ 
+\subsection{Các nhóm tấn công}
+ 
+\paragraph{Tấn công định thời.} Kocher~\cite{Kocher96} chỉ ra rằng thời gian thực thi phụ thuộc dữ liệu bí mật có thể làm lộ khóa. Với Kyber, ví dụ điển hình là KyberSlash~\cite{KyberSlash24}: một số cài đặt dùng phép chia có thời gian phụ thuộc giá trị bí mật khi nén/giải nén, cho phép khôi phục khóa. Một trường hợp khác là so sánh bản mã $c$ với $c'$ không hằng thời gian trong biến đổi FO, bị khai thác bởi Guo và cộng sự~\cite{guo2020}.
+ 
+\paragraph{Phân tích năng lượng và điện từ (DPA/CPA).} Phân tích năng lượng vi sai~\cite{KocherJJ99} và phân tích tương quan~\cite{BrierCO04} dùng giả thuyết về một khóa con cùng một mô hình rò rỉ (như HW) để tìm tương quan thống kê với vết đo. Các phép toán đa thức như nhân trong miền biến đổi NTT, nơi giá trị khóa kết hợp trực tiếp với đầu vào đã biết, là mục tiêu tự nhiên. Primas và cộng sự~\cite{Primas17} trình bày tấn công vết đơn lên cài đặt có che mặt nạ của sơ đồ mã hóa dựa trên mạng, nhắm vào phép biến đổi NTT.
+ 
+\paragraph{Tấn công bản mã chọn kết hợp kênh bên.} Ravi và cộng sự~\cite{Ravi20} đề xuất lớp tấn công tổng quát: kẻ tấn công tạo bản mã chọn sao cho giá trị trung gian trong giải mã chỉ phụ thuộc vài hệ số khóa, rồi dùng rò rỉ (từ bước giải mã hay so sánh) như một oracle để khôi phục từng phần khóa. Ueno và cộng sự~\cite{Ueno22} khai thác rò rỉ của bước \emph{tái mã hóa} trong biến đổi FO, vốn dùng $m'$ bí mật. Hamburg và cộng sự~\cite{Hamburg21} cho thấy cài đặt Kyber có che mặt nạ vẫn bị khai thác nếu các thành phần không che (như giải mã thông điệp hay so sánh) rò rỉ; các công trình sau tiếp tục tấn công cả cài đặt che mặt nạ bậc cao~\cite{Dubrova23,wang2023bitsliced}.
+ 
+\paragraph{Tấn công lỗi.} Pessl và Prokop~\cite{PesslProkop21} cho thấy lỗi gây ra khi thực thi có thể phá vỡ tính hiệu lực của kiểm tra FO. Hướng này không thuộc phạm vi luận văn.
+ 
+\subsection{Hướng phòng chống hiện có}
+ 
+Các hướng phòng chống chia thành ba nhóm.
+\emph{Thực thi hằng thời gian} (tránh rẽ nhánh, truy cập bộ nhớ và phép chia phụ thuộc bí mật) chặn tấn công định thời~\cite{KyberSlash24}.
+\emph{Che mặt nạ} (masking) chia mỗi giá trị nhạy cảm thành nhiều phần chia ngẫu nhiên sao cho mỗi giá trị trung gian đơn lẻ độc lập thống kê với bí mật~\cite{ChariJRR99,ISW03}. Các cài đặt Kyber che mặt nạ bậc một và bậc cao được trình bày trong~\cite{Bos21,Heinz22}: phần tuyến tính (cộng, nhân với hằng, NTT) khá rẻ, còn các thành phần phi tuyến (nén, giải mã, so sánh, băm) đòi hỏi chuyển đổi giữa che mặt nạ số học và Boolean với chi phí đáng kể.
+\emph{Ẩn} (hiding) làm giảm tỷ số tín hiệu trên nhiễu, ví dụ bằng xáo trộn thứ tự thực thi hoặc thêm nhiễu~\cite{MangardOP07}.
+Ngoài ra, kỹ thuật \emph{làm mù / che mặt nạ} (blinding) cộng/nhân bí mật với giá trị ngẫu nhiên trước khi tính toán được dùng từ lâu để chặn tấn công vào RSA~\cite{Kocher96} và các mật mã khối~\cite{messerges2000}.
+ 
+\begin{table}[H]
+\centering
+\caption{So sánh các hướng phòng chống.}
+\label{tab:countermeasures}
+\small
+\begin{tabular}{@{}p{3cm}p{3.4cm}p{3.6cm}p{3.4cm}@{}}
+\toprule
+\textbf{Biện pháp} & \textbf{Chặn} & \textbf{Ưu điểm} & \textbf{Hạn chế} \\
+\midrule
+Hằng thời gian & Định thời & Chi phí thấp, bắt buộc & Không chống năng lượng/EM \\
+Che mặt nạ đầy đủ & DPA/CPA bậc thấp & Có cơ sở chứng minh (probing) & Chi phí lớn ở khối phi tuyến \\
+Ẩn/xáo trộn & DPA/CPA & Dễ tích hợp & Chỉ giảm, không loại bỏ rò rỉ \\
+Làm mù (blinding) cục bộ & DPA/CPA trên phép nhân & Rẻ, bảo toàn hàm vào/ra & Chỉ bảo vệ đoạn được làm mù \\
+\bottomrule
+\end{tabular}
+\end{table}
+ 
+KyberGuard thuộc nhóm làm mù cục bộ (hàng cuối Bảng~\ref{tab:countermeasures}): nhắm vào điểm rò rỉ phổ biến nhất (phép nhân khóa--bản mã trong miền NTT) với chi phí thấp, đồng thời nêu rõ các đoạn còn lại chưa được che.
+ 
+% ============================================================
+\section{Kiến trúc tổng thể của KyberGuard}
+\label{sec:arch}
+ 
+\subsection{Các thành phần}
+ 
+KyberGuard là một cài đặt Kyber1024 bằng Python, gồm bốn thành phần (Hình~\ref{fig:arch}, ánh xạ sang mã nguồn ở Bảng~\ref{tab:modules}).
+ 
+\begin{enumerate}
+\item \textbf{Lõi KEM.} Cài đặt KeyGen, Encaps, Decaps theo đặc tả~\cite{Avanzi21} (CPAPKE bọc bởi biến đổi FO), gồm biến đổi số học NTT, phân phối nhị thức tâm (CBD), nén/giải nén và các hàm SHA-3/SHAKE~\cite{FIPS202}. Toàn bộ các phép toán đại số mặc định tuân thủ chuẩn FIPS~203.
+\item \textbf{Mô-đun giải mã có mặt nạ bảo vệ.} Thay phép tính $\mathbf{s}^T\mathbf{u}$ trong bước giải mã bản gốc bằng phiên bản che mặt nạ ngẫu nhiên $\mathbf{r}$ (Thuật toán~\ref{alg:blind}). Đây là thành phần bảo vệ trọng tâm của hệ thống.
+\item \textbf{Mô-đun mô phỏng kênh bên.} Mô phỏng tấn công định thời và DPA theo mô hình HW lên cả hai phiên bản (bản gốc không bảo vệ và bản có mặt nạ $\mathbf{r}$), đo bằng hệ số tương quan Pearson.
+\item \textbf{Bộ đo hiệu năng.} Đo thời gian giải mã (trung vị của nhiều lần chạy) và chi phí tăng thêm do việc thêm mặt nạ.
+\end{enumerate}
+ 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=6mm and 9mm,
+  blk/.style={draw, rounded corners, align=center, minimum width=2.6cm, minimum height=9mm, font=\small},
+  prot/.style={blk, fill=gray!20, thick},
+  >=Stealth]
+  \node[blk] (in) {Bản mã $c=(\mathbf{u},v)$};
+  \node[blk, right=of in] (ntt) {NTT$(\mathbf{u})$};
+  \node[prot, right=of ntt] (bl) {Nhân khóa\\có mặt nạ $\mathbf{r}$};
+  \node[blk, right=of bl] (dec) {INTT, trừ $v$,\\giải mã $m'$};
+  \node[blk, below=of dec] (fo) {Tái mã hóa,\\so sánh, KDF};
+  \node[blk, left=of fo] (out) {Khóa chung $K$};
+  \draw[->] (in) -- (ntt);
+  \draw[->] (ntt) -- (bl);
+  \draw[->] (bl) -- (dec);
+  \draw[->] (dec) -- (fo);
+  \draw[->] (fo) -- (out);
+\end{tikzpicture}
+\caption{Luồng Decaps trong KyberGuard. Khối tô xám là phần được bảo vệ bằng mặt nạ; các khối còn lại giữ nguyên đặc tả.}
+\label{fig:arch}
+\end{figure}
+ 
+\begin{table}[H]
+\centering
+\caption{Ánh xạ thành phần kiến trúc sang mô-đun mã nguồn.}
+\label{tab:modules}
+\small
+\begin{tabular}{@{}p{4.2cm}p{9cm}@{}}
+\toprule
+\textbf{Thành phần} & \textbf{Mô-đun} \\
+\midrule
+Lõi KEM & \texttt{ccakem.py}, \texttt{encryption/keygen.py}, \texttt{encryption/encrypt.py}, \texttt{encryption/decrypt.py}, \texttt{utils/ntt.py} \\
+Giải mã có mặt nạ & \texttt{encryption/decrypt\_blinded.py} (hàm \texttt{decrypt\_blinded}) \\
+Mô phỏng kênh bên & \texttt{side\_channel\_poc.py} \\
+Đo hiệu năng \& kiểm thử & \texttt{perf\_tests/}, \texttt{demo\_comparison.py}, \texttt{export\_figures.py}, \texttt{analysis/} \\
+\bottomrule
+\end{tabular}
+\end{table}
+ 
+\subsection{Kỹ thuật che mặt nạ trong miền NTT}
+ 
+Trong miền NTT, $\mathbf{s}^T\mathbf{u}$ được tính qua tích vô hướng $\langle\hat{\mathbf{s}},\hat{\mathbf{u}}\rangle=\sum_{j=0}^{k-1}\hat{s}_j\circ\hat{u}_j$, trong đó $\circ$ là phép nhân cơ sở trên 128 cặp hệ số của vành $T_q=\prod_{i=0}^{127}\mathbb{Z}_q[x]/(x^2-\zeta^{2\mathrm{br}(i)+1})$ với $\zeta=17$~\cite{Avanzi21}. Với phép tính bản gốc chưa bảo vệ, $\hat{\mathbf{s}}$ xuất hiện trực tiếp trong các phép nhân. KyberGuard thay bằng
+\begin{equation}
+\hat{\mathbf{s}}^{*}=\hat{\mathbf{s}}+\hat{\mathbf{r}},\qquad
+\hat{w}=\langle\hat{\mathbf{s}}^{*},\hat{\mathbf{u}}\rangle-\langle\hat{\mathbf{r}},\hat{\mathbf{u}}\rangle,
+\label{eq:blind}
+\end{equation}
+với $\hat{\mathbf{r}}$ ngẫu nhiên, độc lập, sinh mới ở mỗi lần giải mã. Đây thực chất là che mặt nạ cộng với hai phần chia $(\hat{\mathbf{s}}+\hat{\mathbf{r}},\,-\hat{\mathbf{r}})$ cho khóa; nhờ phép nhân song tuyến tính nên không cần phép chuyển đổi phức tạp~\cite{ChariJRR99,messerges2000}.
+ 
+\begin{algorithm}[H]
+\caption{Giải mã CPAPKE với cơ chế che mặt nạ ngẫu nhiên}
+\label{alg:blind}
+\begin{algorithmic}[1]
+\Require khóa bí mật $sk$ (hoặc $\hat{\mathbf{s}}$ đã ở miền NTT), bản mã $c=(\mathbf{u},v)$
+\State $\hat{\mathbf{s}}\gets \mathrm{NTT}(\mathsf{Decode}(sk))$;\quad $\hat{\mathbf{u}}\gets \mathrm{NTT}(\mathsf{Decompress}(\mathbf{u}))$;\quad $v\gets\mathsf{Decompress}(v)$
+\State $\hat{\mathbf{r}}\xleftarrow{\$} \mathrm{CSPRNG}(T_q^{k})$ \Comment{sinh ngẫu nhiên qua CSPRNG cấp hệ thống}
+\State $\hat{\mathbf{s}}^{*}\gets\hat{\mathbf{s}}+\hat{\mathbf{r}} \pmod q$ \Comment{khóa bí mật được che giấu}
+\State $\hat{a}\gets\langle\hat{\mathbf{s}}^{*},\hat{\mathbf{u}}\rangle$;\quad $\hat{b}\gets\langle\hat{\mathbf{r}},\hat{\mathbf{u}}\rangle$ \Comment{hai tích vô hướng tách biệt}
+\State $\hat{w}\gets\hat{a}-\hat{b} \pmod q$ \Comment{khử mặt nạ đại số}
+\State $m'\gets\mathsf{Compress}_q\big(v-\mathrm{INTT}(\hat{w}),\,1\big)$
+\State xóa an toàn $\hat{\mathbf{r}},\hat{\mathbf{s}}^{*},\hat{a},\hat{b},\hat{w}$ khỏi bộ nhớ
+\State \Return $m'$
+\end{algorithmic}
+\end{algorithm}
+ 
+\subsection{Các quyết định thiết kế}
+ 
+\begin{itemize}
+\item \textbf{Lấy mẫu $\hat{\mathbf{r}}$ trực tiếp trong miền NTT.} Vì NTT là song ánh trên $R_q$, $\hat{\mathbf{r}}$ đều trên $T_q^k$ tương đương với $\mathbf{r}$ đều trên $R_q^k$, nên tiết kiệm một phép biến đổi NTT.
+\item \textbf{Cơ chế sinh ngẫu nhiên an toàn.} Trong cài đặt thực tế, để tối ưu tốc độ, vector mặt nạ $\hat{\mathbf{r}}$ được sinh trực tiếp bằng nguồn ngẫu nhiên mật mã của hệ điều hành (CSPRNG via \texttt{secrets.token\_bytes}) lấy modulo $q$. Độ lệch phân phối (modulo bias) là cực nhỏ ($2^{16} \bmod 3329 = 2687$, tức bias $< 1/q \approx 0{,}03\%$), hoàn toàn chấp nhận được cho mục đích che mặt nạ mà không cần chi phí lấy mẫu loại bỏ (rejection sampling).
+\item \textbf{Hai tích vô hướng tách biệt.} $\hat{a}$ và $\hat{b}$ được tính riêng và chỉ trừ nhau ở cuối, để không có giá trị trung gian nào của giai đoạn nhân phụ thuộc trực tiếp vào $\hat{\mathbf{s}}$.
+\item \textbf{Xóa biến nhạy cảm.} Do Python dùng số nguyên bất biến và bộ thu gom rác, việc xóa chỉ là nỗ lực tối đa (best-effort), không có bảo đảm tương đương cài đặt C hay hợp ngữ.
+\item \textbf{Chi phí.} Việc che mặt nạ chỉ thêm một tích vô hướng ($O(kn)$ phép nhân cơ sở), $O(kn)$ phép cộng/trừ và việc sinh $kn$ giá trị ngẫu nhiên; bậc tiệm cận $O(kn\log n)$ của giải mã không đổi. Chi phí thời gian thực tế tăng thêm rất nhỏ ($\approx 7{,}5\%$), được đo đạc chi tiết ở Chương~\ref{chap:experiment}.
+\end{itemize}
+ 
+% ============================================================
+\section{Phân tích tính đúng đắn của thiết kế}
+\label{sec:correctness}
+ 
+\subsection{Tính đúng đắn của hàm tính toán}
+ 
+\begin{menhde}\label{prop:func}
+Với mọi $\hat{\mathbf{s}},\hat{\mathbf{r}},\hat{\mathbf{u}}\in T_q^k$, ta có $\langle\hat{\mathbf{s}}+\hat{\mathbf{r}},\hat{\mathbf{u}}\rangle-\langle\hat{\mathbf{r}},\hat{\mathbf{u}}\rangle=\langle\hat{\mathbf{s}},\hat{\mathbf{u}}\rangle$. Do đó $\mathrm{INTT}(\hat{w})=\mathbf{s}^T\mathbf{u}$ trong $R_q$ và Thuật toán~\ref{alg:blind} cho cùng kết quả với giải mã không làm mù, với mọi $\hat{\mathbf{r}}$.
+\end{menhde}
+ 
+\begin{proof}
+$T_q$ là vành giao hoán nên phép nhân phân phối trên phép cộng: $(\hat{s}_j+\hat{r}_j)\circ\hat{u}_j=\hat{s}_j\circ\hat{u}_j+\hat{r}_j\circ\hat{u}_j$ với mỗi $j$. Lấy tổng theo $j$ rồi trừ $\langle\hat{\mathbf{r}},\hat{\mathbf{u}}\rangle$ cho đẳng thức đầu tiên. Mọi phép toán thực hiện trong $\mathbb{Z}_q$ (không làm tròn) nên đẳng thức là chính xác, không phát sinh sai số. Vì $\mathrm{INTT}$ là đồng cấu vành ngược của $\mathrm{NTT}$~\cite{Avanzi21}, $\mathrm{INTT}(\langle\hat{\mathbf{s}},\hat{\mathbf{u}}\rangle)=\mathbf{s}^T\mathbf{u}$.
+\end{proof}
+ 
+Kết quả này khớp với phép kiểm chứng thực nghiệm \texttt{decrypt == decrypt\_blinded} trên nhiều cặp khóa ở Chương~\ref{chap:experiment}; phép kiểm chứng thực nghiệm chỉ là cơ sở bổ sung, còn tính đúng đắn đến từ chứng minh đại số.
+ 
+\subsection{Bảo toàn xác suất lỗi và an toàn IND-CCA2}
+ 
+Giải mã đúng khi tổng nhiễu $e^{T}r+e_2-s^{T}e_1$ cộng sai số nén có mọi hệ số nhỏ hơn khoảng $q/4$; xác suất vi phạm là $\delta\approx2^{-174}$ cho Kyber1024~\cite{Avanzi21}. Từ Mệnh đề~\ref{prop:func}:
+ 
+\begin{hequa}\label{cor:cca}
+Giải đóng gói của KyberGuard là cùng một hàm (xác định) của $(sk,c)$ với giải đóng gói gốc. Hệ quả là xác suất lỗi giải mã $\delta$ không đổi, và các chứng minh an toàn IND-CCA2 của biến đổi FO cùng M-LWE~\cite{hhk2017,LangloisStehle15} áp dụng nguyên vẹn cho KyberGuard ở mức hộp đen.
+\end{hequa}
+ 
+Lý do là $\hat{\mathbf{r}}$ chỉ là ngẫu nhiên nội bộ, không ảnh hưởng đầu ra, nên đối thủ hộp đen không thu thêm hay mất thông tin so với cài đặt gốc.
+ 
+\subsection{Tính che giấu bậc một}
+ 
+\begin{menhde}\label{prop:hide}
+Nếu $\hat{\mathbf{r}}$ đều trên $T_q^k$ và độc lập với $\hat{\mathbf{s}}$, thì $\hat{\mathbf{s}}^{*}=\hat{\mathbf{s}}+\hat{\mathbf{r}}$ đều trên $T_q^k$ và độc lập với $\hat{\mathbf{s}}$. Hơn nữa, mỗi thành phần $\hat{r}_j\circ\hat{u}_j$ độc lập với $\hat{\mathbf{s}}$, và nếu $\hat{u}_j$ khác không trên mỗi thừa số thì $\hat{s}^{*}_j\circ\hat{u}_j$ cũng đều và độc lập với $\hat{\mathbf{s}}$.
+\end{menhde}
+ 
+\begin{proof}
+Phần đầu là tính chất của miếng đệm một lần (one-time pad) trên nhóm cộng hữu hạn $T_q^k$. Về phép nhân cơ sở: do $q-1=3328=2^8\cdot13$ không chia hết cho $512$, không tồn tại căn bậc $512$ của đơn vị trong $\mathbb{Z}_q$, nên mỗi $x^2-\zeta^{2\mathrm{br}(i)+1}$ bất khả quy và $\mathbb{Z}_q[x]/(x^2-\zeta^{2\mathrm{br}(i)+1})\cong\mathbb{F}_{q^2}$ là một trường~\cite{Avanzi21}. Nhân với phần tử khác không của trường là song ánh, nên $\hat{s}^{*}_j\circ\hat{u}_j$ đều. Vì $\hat{r}_j$ độc lập với $\hat{\mathbf{s}}$, $\hat{r}_j\circ\hat{u}_j$ cũng vậy.
+\end{proof}
+ 
+Hệ quả là mọi giá trị trung gian đơn lẻ của giai đoạn nhân ($\hat{\mathbf{s}}^{*}$, $\hat{a}$, $\hat{b}$) có phân phối không phụ thuộc $\hat{\mathbf{s}}$, tức là bảo mật bậc một theo mô hình thăm dò (probing) bậc một~\cite{ISW03}. Với mô hình rò rỉ HW cộng nhiễu, điều này kéo theo kỳ vọng của tương quan Pearson giữa oracle $HW(s\cdot u)$ và vết đo xấp xỉ $0$; với $N$ mẫu độc lập, độ lệch chuẩn của hệ số tương quan mẫu xấp xỉ $1/\sqrt{N}$. Chẳng hạn $N=120$ cho khoảng $0{,}09$, sát với ngưỡng $|r|<0{,}1$ đặt ra cho bản làm mù. Vì vậy nên bổ sung kiểm định ý nghĩa thống kê (ví dụ ngưỡng $4{,}5/\sqrt{N}$ hay kiểm định $t$ của TVLA~\cite{GoodwillJJR11,SchneiderMoradi15}) thay vì chỉ dùng ngưỡng cố định.
+ 
+\subsection{Giới hạn của đảm bảo}
+ 
+Cần nêu rõ những gì thiết kế \emph{không} đảm bảo, vì các tấn công ở Mục~\ref{sec:attacks} khai thác chính những điểm này.
+ 
+\begin{enumerate}
+\item \textbf{Điểm tái kết hợp.} Ở bước $\hat{a}-\hat{b}$ (và sau $\mathrm{INTT}$, bước trừ $v$ và giải mã), giá trị $\langle\hat{\mathbf{s}},\hat{\mathbf{u}}\rangle$ hoặc $m'$ xuất hiện ở dạng không che. Rò rỉ tại đây là mục tiêu của tấn công bản mã chọn~\cite{Ravi20,Hamburg21}. Che mặt nạ đầy đủ đòi hỏi mang các phần chia qua INTT (tuyến tính) và thực hiện giải mã/so sánh trên dữ liệu che~\cite{Bos21}, vượt quá phạm vi làm mù cục bộ.
+\item \textbf{Bước tái mã hóa và so sánh.} Các bước 2--5 của Thuật toán~\ref{alg:decaps} dùng $m'$ bí mật nhưng không được che, là mục tiêu của~\cite{Ueno22} và của tấn công định thời trên so sánh~\cite{guo2020}.
+\item \textbf{Tấn công bậc hai.} Kẻ tấn công kết hợp rò rỉ của $\hat{\mathbf{s}}^{*}$ và $\hat{\mathbf{r}}$ (hoặc $\hat{a}$ và $\hat{b}$) trong cùng một vết có thể thu thông tin về $\hat{\mathbf{s}}$; mức an toàn chỉ là bậc một~\cite{ChariJRR99,ISW03}.
+\item \textbf{Mô phỏng.} Các kết quả ở Chương~\ref{chap:experiment} dựa trên mô hình HW mô phỏng và đo thời gian của Python, không thay thế phép đo thực trên phần cứng; xóa bộ nhớ trong Python chỉ là nỗ lực tối đa.
+\end{enumerate}
+ 
+Tóm lại, KyberGuard được thiết kế và chứng minh là: (i) đúng đắn tuyệt đối về hàm (Mệnh đề~\ref{prop:func}); (ii) không làm đổi $\delta$ và chứng minh IND-CCA2 (Hệ quả~\ref{cor:cca}); (iii) che giấu bậc một cho giai đoạn nhân khóa--bản mã (Mệnh đề~\ref{prop:hide}). Đây là lớp bảo vệ cục bộ, rẻ, được thiết kế để kết hợp với biện pháp hằng thời gian và, theo hướng phát triển, che mặt nạ đầy đủ cho các khối phi tuyến.
+ 
+\end{document}

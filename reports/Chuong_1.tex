@@ -1,0 +1,468 @@
+\documentclass[../LuanVan.tex]{subfiles}
+\begin{document}
+
+Chương này trình bày các cơ sở lý thuyết làm nền tảng cho toàn bộ luận văn. Mục~\ref{sec:pqc} giới thiệu bối cảnh chuẩn hóa mật mã hậu lượng tử của NIST, vị thế của CRYSTALS-Kyber (ML-KEM) và tổng quan về tấn công kênh bên trên các cài đặt mật mã thực tế. Mục~\ref{sec:toanhoc} trình bày các kiến thức toán học: cấu trúc đại số cơ sở, lưới và các bài toán khó (SVP, CVP, SIS, LWE, Module-LWE), phép biến đổi NTT và các hàm băm mở rộng. Mục~\ref{sec:kyber} mô tả chi tiết thuật toán đóng gói khóa Kyber cùng các bộ tham số an toàn. Mục~\ref{sec:lienquan} tổng hợp các công trình về tấn công kênh bên trên Kyber, các giải pháp phòng thủ hiện có và những hạn chế còn tồn tại, làm cơ sở cho giải pháp đề xuất ở các chương sau.
+
+%========================================================================
+\section{Tổng quan về mật mã hậu lượng tử và tấn công kênh bên}\label{sec:pqc}
+%------------------------------------------------------------------------
+\subsection{Bối cảnh chuẩn hóa PQC của NIST và vị thế của CRYSTALS-Kyber}\label{subsec:nist}
+
+Độ an toàn của các hệ mật khóa công khai đang được dùng phổ biến như RSA, Diffie--Hellman và ECC dựa trên độ khó của bài toán phân tích số nguyên và bài toán logarit rời rạc. Năm 1994, Shor đã chỉ ra thuật toán lượng tử giải cả hai bài toán này trong thời gian đa thức \cite{Shor94}, do đó một máy tính lượng tử đủ lớn sẽ phá vỡ hoàn toàn các hệ mật nói trên. Đối với mật mã đối xứng và hàm băm, thuật toán Grover chỉ mang lại mức tăng tốc bậc hai nên có thể đối phó bằng cách tăng độ dài khóa. Ngoài ra còn có mối đe dọa ``thu thập trước, giải mã sau'' (\textit{harvest now, decrypt later}): kẻ tấn công lưu lại dữ liệu mã hóa ngay hôm nay để giải mã khi có máy tính lượng tử, nên các dữ liệu cần giữ bí mật lâu dài đã chịu rủi ro từ bây giờ \cite{Mosca18}.
+
+Để ứng phó, Viện Tiêu chuẩn và Công nghệ Hoa Kỳ (NIST) phát động quá trình chuẩn hóa mật mã hậu lượng tử (PQC) từ cuối năm 2016 \cite{NIST16CFP}. Quá trình này trải qua nhiều vòng đánh giá công khai; năm 2022 NIST công bố lựa chọn CRYSTALS-Kyber cho cơ chế đóng gói khóa (KEM), cùng CRYSTALS-Dilithium, Falcon và SPHINCS$^+$ cho chữ ký số \cite{NISTIR8413}. Tháng 8 năm 2024, NIST ban hành các tiêu chuẩn FIPS 203 (ML-KEM, dẫn xuất từ Kyber), FIPS 204 (ML-DSA, dẫn xuất từ Dilithium) và FIPS 205 (SLH-DSA, dẫn xuất từ SPHINCS$^+$) \cite{FIPS203,FIPS204,FIPS205}. Trong luận văn này, tên \textit{Kyber} chỉ thuật toán gốc do nhóm tác giả CRYSTALS đề xuất \cite{Bos18,Avanzi21}, còn \textit{ML-KEM} chỉ tiêu chuẩn của NIST. Hai bản có một số khác biệt nhỏ về chi tiết thuật toán (xem phần ``Khác biệt giữa ML-KEM và Kyber vòng 3'' ở mục~\ref{subsec:fo}).
+
+Kyber thuộc họ mật mã dựa trên lưới. Độ an toàn của nó dựa vào bài toán Module-LWE (mục~\ref{subsec:lattice}), một bước phát triển từ bài toán LWE của Regev \cite{Regev05} qua Ring-LWE \cite{LyubashevskyPR13} và các thiết kế tiền nhiệm như NewHope \cite{Alkim16}. Lý do Kyber được chọn là sự cân bằng giữa độ an toàn có cơ sở quy giảm lý thuyết \cite{LangloisStehle15}, kích thước khóa và bản mã nhỏ so với các họ PQC khác, và tốc độ cao trên cả phần cứng đa dụng lẫn thiết bị nhúng \cite{Bos18,KannwischerRSS19}.
+
+Tuy nhiên, việc một thuật toán an toàn về mặt toán học chưa bảo đảm cài đặt của nó an toàn trong thực tế. Khi Kyber được triển khai trên vi điều khiển, thẻ thông minh hay các thiết bị IoT, nơi kẻ tấn công có thể tiếp cận vật lý hoặc đo được thời gian thực thi, khóa bí mật có thể bị lộ qua kênh bên, như được trình bày ở mục tiếp theo.
+
+%------------------------------------------------------------------------
+\subsection{Tổng quan về tấn công kênh bên trên cài đặt mật mã thực tế}\label{subsec:sca}
+
+\begin{dn}
+    \textit{Tấn công kênh bên} (\textit{Side-Channel Attack}, SCA) là tấn công khai thác thông tin vật lý rò rỉ trong quá trình thiết bị thực thi thuật toán mật mã (thời gian thực thi, mức tiêu thụ năng lượng, bức xạ điện từ, \dots) để thu hồi dữ liệu bí mật, thay vì tấn công vào cấu trúc toán học của thuật toán \cite{MangardOP07}.
+\end{dn}
+
+\paragraph{Các loại kênh bên.} Kocher là người đầu tiên chỉ ra tấn công dựa trên thời gian thực thi \cite{Kocher96}, sau đó cùng cộng sự đề xuất phân tích năng lượng đơn giản (SPA) và phân tích năng lượng vi sai (DPA) \cite{KocherJJ99}. Bức xạ điện từ (EM) cũng cho thông tin tương tự như năng lượng nhưng có thể đo cục bộ hơn \cite{QuisquaterSamyde01,GandolfiMO01}. Ba kênh này là phạm vi chính của luận văn. Bảng~\ref{tab:sca} tóm tắt các loại tấn công.
+
+\begin{table}[H]
+\centering
+\caption{Phân loại các tấn công kênh bên và phạm vi nghiên cứu.}
+\label{tab:sca}
+\begin{tabular}{L{3.2cm}|L{5cm}|L{5.5cm}}
+\hline
+\textbf{Loại} & \textbf{Nguyên lý} & \textbf{Ví dụ} \\ \hline
+Thời gian (timing) & Thời gian thực thi phụ thuộc dữ liệu bí mật & Tấn công vào phép chia, rẽ nhánh phụ thuộc khóa \cite{Kocher96,KyberSlash24} \\ \hline
+Năng lượng/EM \newline (SPA, DPA, CPA) & Công suất tiêu thụ hoặc bức xạ tương quan với dữ liệu trung gian & Tương quan với trọng số Hamming của kết quả trung gian \cite{KocherJJ99,BrierCO04} \\ \hline
+Chủ động & Gây lỗi có chủ đích rồi phân tích đầu ra sai & Phân tích lỗi vi sai \cite{BihamShamir97}; tấn công lỗi trên KEM dựa trên lưới \cite{PesslProkop21} \\ \hline
+\end{tabular}
+\end{table}
+
+Luận văn tập trung vào các tấn công thụ động qua thời gian, năng lượng và bức xạ điện từ. Các tấn công dạng chủ động sẽ được nghiên cứu phát triển thêm trong tương lai.
+
+\paragraph{Phân tích năng lượng và mô hình rò rỉ.} Công suất tiêu thụ tức thời của mạch CMOS phụ thuộc vào số bit chuyển trạng thái hoặc số bit mang giá trị 1. Do đó phổ biến hai mô hình rò rỉ:
+\begin{itemize}
+    \item \textit{Trọng số Hamming} (HW): rò rỉ tỷ lệ với $\mathrm{HW}(x)$, số bit $1$ của giá trị $x$ được xử lý.
+    \item \textit{Khoảng cách Hamming} (HD): rò rỉ tỷ lệ với $\mathrm{HW}(x\oplus y)$, số bit thay đổi khi thanh ghi chuyển từ giá trị $y$ sang $x$.
+\end{itemize}
+Với DPA/CPA, kẻ tấn công thu $N$ vết năng lượng ứng với $N$ đầu vào khác nhau, đưa ra giả thuyết về một phần của khóa, tính giá trị trung gian dự đoán $h_i$ và so sánh với các mẫu đo $t_i$ bằng hệ số tương quan Pearson \cite{BrierCO04}:
+\begin{equation}
+    r = \frac{\sum_{i}(h_i-\bar h)(t_i-\bar t)}{\sqrt{\sum_{i}(h_i-\bar h)^2\,\sum_{i}(t_i-\bar t)^2}}.
+\end{equation}
+Giả thuyết đúng cho $|r|$ lớn hơn rõ rệt so với các giả thuyết sai. Các tấn công trên là \textit{không cần hồ sơ} (\textit{non-profiled}). Nếu kẻ tấn công có thiết bị giống hệt để học mô hình rò rỉ trước, họ có thể thực hiện tấn công \textit{có hồ sơ} (\textit{profiled}), chẳng hạn tấn công mẫu \cite{ChariRR02}.
+
+\paragraph{Đánh giá rò rỉ độc lập mô hình.} Phương pháp TVLA (Test Vector Leakage Assessment) kiểm tra xem vết năng lượng có phụ thuộc dữ liệu hay không mà không cần giả thuyết khóa \cite{GoodwillJJR11,SchneiderMoradi15}. Trong kiểm tra ``cố định--ngẫu nhiên'', thiết bị xử lý xen kẽ đầu vào cố định và đầu vào ngẫu nhiên, sau đó tại mỗi mẫu thời gian tính thống kê $t$ của Welch:
+\begin{equation}
+    t = \frac{\mu_0-\mu_1}{\sqrt{\sigma_0^2/n_0+\sigma_1^2/n_1}},
+\end{equation}
+với $\mu_j,\sigma_j^2,n_j$ là trung bình, phương sai và số mẫu của nhóm $j$. Nếu $|t|>4{,}5$ tại một số điểm thì có bằng chứng thống kê về rò rỉ \cite{GoodwillJJR11}.
+
+\paragraph{Các nhóm biện pháp phòng thủ.} Các biện pháp chống tấn công kênh bên chia thành hai nhóm chính \cite{MangardOP07}:
+\begin{itemize}
+    \item \textit{Che giấu}: làm giảm tỷ số tín hiệu trên nhiễu của rò rỉ, chẳng hạn bằng cách thêm nhiễu, chèn độ trễ ngẫu nhiên, xáo trộn thứ tự các phép tính, hoặc bảo đảm thời gian không đổi.
+    \item \textit{Mặt nạ}: tách giá trị nhạy cảm $x$ thành $d+1$ phần chia ngẫu nhiên (ví dụ $x=x_0+x_1+\dots+x_d \bmod q$ hoặc $x=x_0\oplus\cdots\oplus x_d$), sao cho mọi tập không quá $d$ phần chia đều độc lập thống kê với $x$ \cite{ChariJRR99,ISW03}. Kẻ tấn công cần kết hợp rò rỉ của ít nhất $d+1$ điểm, nên số vết cần thiết tăng theo hàm mũ của bậc $d$.
+\end{itemize}
+Kỹ thuật ngẫu nhiên hóa/làm mù là một dạng mặt nạ áp dụng cho các phép toán đại số, cộng thêm giá trị ngẫu nhiên vào toán hạng bí mật rồi khử đi ở cuối.
+
+\paragraph{Mô hình đe dọa đặc thù của KEM.} Trong cơ chế đóng gói khóa IND-CCA, khóa bí mật là khóa tĩnh được dùng lại ở mọi lần mở gói. Kẻ tấn công có thể gửi nhiều bản mã tùy chọn và thu vết của mỗi lần thực thi, có thể là bản mã được chọn có chủ đích. Quá trình mở gói bao gồm giải mã, mã hóa lại và so sánh, nghĩa là có nhiều bước xử lý dữ liệu bí mật, như được phân tích ở mục~\ref{subsec:fo} và~\ref{sec:lienquan}.
+
+%========================================================================
+\section{Cơ sở toán học cho thuật toán CRYSTALS-Kyber}\label{sec:toanhoc}
+%------------------------------------------------------------------------
+\subsection{Cấu trúc đại số cơ sở}\label{subsec:algebra}
+
+Để hiểu rõ không gian hoạt động của bài toán trong Kyber, cần nắm được các cấu trúc đại số trừu tượng. Hệ mật mã Kyber không hoạt động trên các tập số thực hay số nguyên vô hạn, mà hoạt động trên các trường hữu hạn và vành đa thức.
+
+\begin{dn}
+    Một \textit{nhóm} $(G,\cdot)$ là một tập hợp $G$ cùng phép toán hai ngôi $\cdot$ thỏa mãn: tính kết hợp, tồn tại phần tử đơn vị $e$, và mọi phần tử $a \in G$ đều có phần tử nghịch đảo $a^{-1}$. Nhóm được gọi là \textit{giao hoán} (hay abel) nếu $a\cdot b = b \cdot a$ với mọi $a,b\in G$ \cite{DummitFoote04}.
+\end{dn}
+
+\begin{dn}
+    Một \textit{vành} $(R,+,\cdot)$ là một tập hợp với hai phép toán sao cho $(R,+)$ là nhóm giao hoán, phép nhân có tính kết hợp và có phần tử đơn vị $1$, đồng thời phép nhân phân phối đối với phép cộng. Vành được gọi là \textit{giao hoán} nếu phép nhân giao hoán. Một \textit{trường} là một vành giao hoán có $1 \neq 0$ trong đó mọi phần tử khác không đều khả nghịch \cite{DummitFoote04}.
+\end{dn}
+
+Với số nguyên dương $q$, tập các lớp thặng dư $\mathbb{Z}_q = \mathbb{Z}/q\mathbb{Z} = \{0,1,\dots,q-1\}$ với phép cộng và nhân modulo $q$ là một vành giao hoán. Vành $\mathbb{Z}_q$ là một trường khi và chỉ khi $q$ là số nguyên tố; khi đó ta còn ký hiệu là $\mathbb{F}_q$ \cite{LidlNiederreiter97}. Trong Kyber, modulus được cố định là số nguyên tố $q = 3329$ \cite{Avanzi21,FIPS203}, do đó mọi hệ số của đa thức đều nằm trong trường hữu hạn $\mathbb{F}_{3329}$.
+
+Một tính chất quan trọng của trường hữu hạn là nhóm nhân $\mathbb{F}_q^{*} = \mathbb{F}_q\setminus\{0\}$ là nhóm cyclic cấp $q-1$ \cite{LidlNiederreiter97}. Hệ quả trực tiếp là: với mỗi ước $d$ của $q-1$, tồn tại căn nguyên thủy bậc $d$ của đơn vị trong $\mathbb{F}_q$, tức phần tử $\zeta$ có cấp nhân đúng bằng $d$. Với $q=3329$ ta có
+\begin{equation}\label{eq:q1}
+    q - 1 = 3328 = 2^8 \cdot 13,
+\end{equation}
+nên tồn tại căn nguyên thủy bậc $256$ của đơn vị (chẳng hạn $\zeta = 17$, thỏa $17^{128}\equiv -1 \pmod{3329}$), nhưng không tồn tại căn nguyên thủy bậc $512$ vì $512 \nmid 3328$. Chính sự kiện này quyết định cấu trúc \textit{NTT không đầy đủ} của Kyber được trình bày ở mục~\ref{subsec:ntt}.
+
+% \medskip
+\paragraph{Vành đa thức thương.} Cho vành giao hoán $\mathbb{Z}_q$, ký hiệu $\mathbb{Z}_q[X]$ là vành các đa thức với hệ số trong $\mathbb{Z}_q$. Với đa thức $f(X)$ đơn hệ, vành thương $\mathbb{Z}_q[X]/(f(X))$ gồm các lớp tương đương của đa thức theo quan hệ đồng dư modulo $f$; mỗi lớp có đúng một đại diện có bậc nhỏ hơn $\deg f$ \cite{LidlNiederreiter97}.
+
+\begin{dn}
+    Với $n$ là lũy thừa của $2$, đa thức $X^n+1$ là đa thức chia đường tròn thứ $2n$ và bất khả quy trên $\mathbb{Z}$ \cite{LyubashevskyPR13}. Vành
+    \begin{equation}
+        R_q = \mathbb{Z}_q[X]/(X^n+1)
+    \end{equation}
+    được gọi là vành đa thức \textit{negacyclic}. Mỗi phần tử của $R_q$ là một đa thức $a(X)=\sum_{i=0}^{n-1} a_i X^i$ với $a_i\in\mathbb{Z}_q$, và có thể đồng nhất với véc tơ hệ số $(a_0,\dots,a_{n-1})\in \mathbb{Z}_q^n$.
+\end{dn}
+
+Vì $X^n \equiv -1$ trong $R_q$, phép cộng thực hiện theo từng hệ số, còn phép nhân là phép \textit{tích chập negacyclic}:
+\begin{equation}
+    (a\cdot b)_k = \sum_{i+j=k} a_i b_j \;-\; \sum_{i+j=k+n} a_i b_j \pmod q, \qquad 0\le k<n.
+\end{equation}
+Phép nhân trực tiếp theo định nghĩa (phương pháp sách giáo khoa) có độ phức tạp $O(n^2)$, đây là lý do cần đến phép biến đổi NTT để giảm xuống $O(n\log n)$.
+
+Trong Kyber, các tham số vành cố định là $n=256$ và $q=3329$ \cite{Bos18,Avanzi21}. Mở rộng lên module, $R_q^k$ là tập các véc tơ gồm $k$ phần tử của $R_q$, và $R_q^{k\times k}$ là tập các ma trận vuông cỡ $k$ với phần tử trong $R_q$. Đây chính là không gian mà bài toán Module-LWE (bài toán~\ref{bt:moduleLWE}) hoạt động. Tính chất module-lattice của các cấu trúc này được Langlois và Stehlé nghiên cứu, bao gồm phép quy giảm từ trường hợp xấu nhất sang trường hợp trung bình cho Module-LWE \cite{LangloisStehle15}.
+
+Khi $\mathbb{Z}_q$ là trường và $q\equiv 1 \pmod{2n'}$ với $n'\mid n$, đa thức $X^n+1$ phân rã được trong $\mathbb{Z}_q[X]$ thành các nhân tử bậc thấp; theo định lý phần dư Trung Hoa, $R_q$ khi đó đẳng cấu với tích trực tiếp các vành thương nhỏ hơn. Đây là cơ sở toán học của NTT.
+
+%------------------------------------------------------------------------
+\subsection{Bài toán lưới đại số và bài toán Module-LWE}\label{subsec:lattice}
+
+\subsubsection{Lưới đại số}
+\begin{dn}
+    Một lưới $n$ chiều, ký hiệu là $\mathcal{L}$, là tập hợp tất cả các tổ hợp tuyến tính với hệ số nguyên
+    \begin{equation}
+        \left\{\sum_{i=1}^{n} x_i \mathbf{b}_i: x_i \in \mathbb{Z},1\leq i \le n \right\}
+    \end{equation}
+    của $n$ véc tơ độc lập tuyến tính $\mathbf{b}_1, \mathbf{b}_2, \dots, \mathbf{b}_n$ trong không gian $\mathbb{R}^n$.
+\end{dn}
+
+Tập hợp các véc tơ $\mathbf{b}_1, \mathbf{b}_2,\dots ,\mathbf{b}_n$ được gọi là cơ sở của lưới, ký hiệu là ma trận $\mathbf{B} = [\mathbf{b}_1, \mathbf{b}_2, \dots, \mathbf{b}_n]$.
+Một tính chất quan trọng của lưới đại số là một lưới có thể có vô số cơ sở khác nhau. Một cơ sở được gọi là ``tốt'' nếu các véc tơ của nó tương đối ngắn và gần vuông góc với nhau; ngược lại, cơ sở được gọi là ``xấu'' nếu các véc tơ rất dài và tạo với nhau những góc hẹp. Tính chất này là nguyên lý cốt lõi của mật mã dựa trên lưới: khóa bí mật thường là một cơ sở ``tốt'' cho phép giải bài toán dễ dàng, trong khi khóa công khai là một cơ sở ``xấu'' khiến kẻ tấn công rất khó giải quyết bài toán.
+Cần lưu ý rằng Kyber không dùng trực tiếp cặp cơ sở tốt/xấu như trên, mà dựa vào độ khó của bài toán Module-LWE được trình bày ở các mục sau.
+
+\subsubsection{Một số bài toán nền tảng}
+Độ an toàn của các hệ mật mã dựa trên lưới phụ thuộc vào độ khó tính toán của các bài toán toán học trên lưới. Trong mục này, luận văn giới thiệu một số bài toán nền tảng phổ biến và quan trọng nhất, được ứng dụng trong nhiều hệ mật mã.
+\paragraph{Bài toán SVP.} Bài toán SVP (\textit{Shortest Vector Problem}), bài toán tìm véc tơ ngắn nhất, là bài toán kinh điển và cơ bản nhất trên lưới đại số.
+\begin{bt}
+    Cho một cơ sở $\mathbf{B}$ của lưới $\mathcal{L}(\mathbf{B})$, bài toán SVP yêu cầu tìm một véc tơ khác không $\mathbf{v} \in \mathcal{L}$ sao cho chuẩn Euclide $\|\mathbf{v}\|$ là nhỏ nhất có thể \cite{Bergami16}.
+\end{bt}
+
+Trong thực tế, việc giải chính xác bài toán SVP là vô cùng khó, do đó, các hệ thống mật mã thường dựa trên phiên bản xấp xỉ của nó là \textit{Appr-SVP, Approximate SVP}. Bài toán Appr-SVP yêu cầu tìm véc tơ khác không $\mathbf{v}\in\mathcal{L}$ sao cho $\|\mathbf{v}\| \le \gamma \cdot \lambda_1(\mathcal{L})$, với $\lambda_1(\mathcal{L})$ là độ dài của véc tơ ngắn nhất thực sự và $\gamma \ge 1$ là hệ số xấp xỉ.
+Phương pháp phân tích Core-SVP, được đề xuất trong NewHope \cite{Alkim16} và được Kyber áp dụng \cite{Bos18}, dùng chi phí của các lời gọi bộ giải SVP (trong các tấn công thu gọn cơ sở BKZ) làm thước đo để ước lượng mức độ bảo mật lượng tử của các thuật toán như Kyber hay NewHope.
+
+\paragraph{Bài toán CVP.} Bài toán CVP (\textit{Closest Vector Problem}), còn được gọi là bài toán tìm véc tơ gần nhất, được mô tả như sau.
+\begin{bt}
+    Cho một cơ sở $\mathbf{B}$ của lưới $\mathcal{L}(\mathbf{B})$ và một véc tơ mục tiêu $\mathbf{t} \in \mathbb{R}^n$ không nằm trong lưới. Yêu cầu của bài toán là tìm véc tơ $\mathbf{v} \in \mathcal{L}$ sao cho khoảng cách $\|\mathbf{v}-\mathbf{t}\|$ là nhỏ nhất \cite{Bergami16}.
+\end{bt}
+
+Tương tự như SVP, CVP cũng có phiên bản xấp xỉ là Appr-CVP. Bài toán CVP có ý nghĩa ứng dụng rất lớn trong quá trình giải mã. Bản mã thu được thường là một điểm thuộc lưới nhưng bị cộng thêm véc tơ nhiễu (tương đương với véc tơ $\mathbf{t}$). Người nắm giữ khóa bí mật có thể giải bài toán CVP để tìm lại điểm lưới gốc từ đó giải mã thành công, trong khi kẻ tấn công khó có thể làm được điều này.
+Chính xác hơn, do nhiễu đủ nhỏ nên đây là trường hợp đặc biệt của CVP có tên là bài toán giải mã trong khoảng cách giới hạn (\textit{Bounded Distance Decoding}, BDD), khi véc tơ mục tiêu nằm rất gần lưới.
+
+\paragraph{Bài toán SIS.} Được giới thiệu bởi Miklós Ajtai vào năm 1996 \cite{Ajtai96}, SIS (\textit{Short Integer Solution}) hay bài toán nghiệm nguyên ngắn là một cột mốc lịch sử đánh dấu sự kết nối giữa độ khó trong trường hợp trung bình và trường hợp xấu nhất.
+\begin{bt}
+    Cho ma trận ngẫu nhiên $\mathbf{A} \in \mathbb{Z}_q^{n \times m}$ và một số thực $\beta$ (với $0<\beta<q$), bài toán SIS yêu cầu tìm một véc tơ nguyên khác không $\mathbf{x} \in \mathbb{Z}^m$ sao cho:
+    \begin{enumerate}
+        \item $\mathbf{A}\mathbf{x} \equiv \mathbf{0} \pmod q$
+        \item Chuẩn $\|\mathbf{x}\| \le \beta$
+    \end{enumerate}
+\end{bt}
+
+Bài toán SIS thường được sử dụng làm nền tảng để xây dựng các hàm băm một chiều \cite{Ajtai96} và các sơ đồ chữ ký số kháng lượng tử (ví dụ CRYSTALS-Dilithium \cite{Ducas18}) nhờ vào đặc tính chống va chạm rất mạnh của nó.
+
+\paragraph{Bài toán LWE.} Được Oded Regev giới thiệu vào năm 2005 \cite{Regev05}, \textit{Learning With Errors} được xem là bài toán nền tảng quan trọng nhất định hình nên sự phát triển của các sơ đồ mã hóa khóa công khai hiện đại. Bài toán LWE có hai phiên bản chính \cite{Bergami16}, được mô tả như sau.
+\begin{bt}
+    \textbf{Search LWE:} Cho một ma trận $\mathbf{A} \in \mathbb{Z}_q^{m \times n}$ ngẫu nhiên đều và một véc tơ $\mathbf{b} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q$, trong đó $\mathbf{s} \in \mathbb{Z}_q^n$ là véc tơ bí mật và $\mathbf{e} \in \mathbb{Z}_q^m$ là véc tơ nhiễu nhỏ có các thành phần được lấy từ một phân phối nhiễu $\chi$. Bài toán yêu cầu phải tìm ra véc tơ bí mật $\mathbf{s}$.
+    \label{searchLWE}
+\end{bt}
+
+\begin{bt}
+    \textbf{Decision LWE:} Các giả thiết của bài toán Decision LWE tương tự như bài toán Search LWE, tuy nhiên, nhiệm vụ của bài toán yêu cầu phải phân biệt được phân phối của cặp $(\mathbf{A}, \mathbf{A}\mathbf{s} + \mathbf{e})$ với một cặp $(\mathbf{A}, \mathbf{u})$, trong đó $\mathbf{u}\in\mathbb{Z}_q^m$ hoàn toàn ngẫu nhiên đều.
+\end{bt}
+
+Điểm đột phá của LWE là khả năng quy giảm từ trường hợp xấu nhất của các bài toán trên lưới (như GapSVP, SIVP) sang trường hợp trung bình của LWE, bằng thuật toán lượng tử \cite{Regev05} và bằng thuật toán cổ điển \cite{Peikert09, BLPRS13}.
+Tuy nhiên, mặc dù bài toán LWE thuần túy cung cấp nền tảng bảo mật vững chắc, nó lại gặp rào cản lớn khi triển khai thực tế do yêu cầu kích thước khóa (đến từ ma trận $\mathbf{A}$) cực kỳ lớn và tốc độ tính toán chậm \cite{Bos18}. Để giải quyết vấn đề này, các nhà nghiên cứu đã giới thiệu bài toán Ring-LWE hoạt động trên vành đa thức \cite{LyubashevskyPR13}, giúp thu nhỏ kích thước khóa đáng kể.
+Tuy nhiên, các cuộc tấn công lượng tử gần đây khai thác cấu trúc đại số của lưới ideal trên các trường cyclotomic để tìm véc tơ ngắn trong ideal \cite{CramerDPR16, CramerDW17} đã làm dấy lên lo ngại về cấu trúc đại số dày đặc của vành đa thức. Các tấn công này hiện chưa mở rộng được sang Ring-LWE \cite{Bos18}.
+
+\paragraph{Bài toán Module-LWE.} Đứng trước thách thức đó, bài toán Module-LWE, được đề xuất trong \cite{BGV12} và được Langlois và Stehlé thiết lập các quy giảm bảo mật từ trường hợp xấu nhất \cite{LangloisStehle15}, trở thành một sự cân bằng hoàn hảo, dung hòa được hiệu năng của Ring-LWE và độ an toàn của LWE thuần túy.
+Thay vì hoạt động trên các ma trận số nguyên lớn như LWE hoặc một vành đa thức duy nhất như Ring-LWE, Module-LWE hoạt động trên một module có chiều $k$ của một vành đa thức.
+
+Ký hiệu $R_q = \mathbb{Z}_q[X]/(X^n + 1)$ là một vành đa thức với bậc $n$ (là lũy thừa của $2$) và modulus $q$. Cho một số nguyên dương $k$ đóng vai trò là chiều của module, bài toán Module-LWE có thể được phát biểu như sau \cite[Mục 2.3]{Bos18}:
+
+\begin{bt}
+    \textbf{Module-LWE (Search \& Decision):}
+    Giả sử $\mathbf{A} \in R_q^{k \times k}$ là một ma trận ngẫu nhiên đều gồm các đa thức thuộc vành $R_q$, và $\mathbf{s}, \mathbf{e} \in R_q^k$ lần lượt là véc tơ bí mật và véc tơ nhiễu có các hệ số đa thức được lấy mẫu từ một phân phối nhỏ như phân phối nhị thức. Định nghĩa véc tơ $\mathbf{b} = \mathbf{A}\mathbf{s} + \mathbf{e} \in R_q^k$.
+    \begin{itemize}
+        \item Phiên bản \textbf{Search Module-LWE} yêu cầu tìm lại véc tơ bí mật $\mathbf{s}$ khi biết cặp $(\mathbf{A}, \mathbf{b})$.
+        \item Phiên bản \textbf{Decision Module-LWE} yêu cầu phân biệt cặp phân phối giả ngẫu nhiên $(\mathbf{A}, \mathbf{b})$ với một cặp $(\mathbf{A}, \mathbf{u})$ hoàn toàn ngẫu nhiên đều, trong đó $\mathbf{u} \in R_q^k$.
+    \end{itemize}
+    \label{bt:moduleLWE}
+\end{bt}
+
+Thuật toán Kyber được mô tả ở mục~\ref{sec:kyber} sử dụng Module-LWE, cân bằng giữa bảo mật và tốc độ trong việc đóng gói khóa. Trong thuật toán CRYSTALS-Kyber, nhóm tác giả đã chọn cố định vành đa thức ở bậc $n=256$. Khi đó, mức độ an toàn của hệ thống chủ yếu được điều chỉnh thông qua tham số chiều $k$ của ma trận (cùng với tham số nhiễu $\eta$) \cite{Bos18}, tương ứng với chiều LWE hiệu dụng $n\cdot k = 512, 768, 1024$ khi $k = 2, 3, 4$.
+Ví dụ:
+\begin{itemize}
+    \item Với $k=1$, bài toán trở thành Ring-LWE \cite{Bos18}: hiệu quả nhất nhưng có nhiều cấu trúc đại số nhất, do đó tiềm ẩn nhiều hướng tấn công hơn (dù hiện chưa biết cách khai thác).
+    \item Với bậc vành $n=1$ (tức $R_q = \mathbb{Z}_q$), bài toán trở thành LWE thuần túy \cite{Bos18}: không còn cấu trúc đại số bổ sung nhưng ma trận $\mathbf{A}$ rất lớn nên kém hiệu quả về kích thước và tốc độ.
+\end{itemize}
+
+Do đó, trong Kyber, việc chọn $k=2, 3$ hoặc $4$ giúp giảm bớt cấu trúc đại số dày đặc mà kẻ tấn công có thể khai thác trong Ring-LWE \cite{Bos18}, đồng thời giữ nguyên các lợi thế về khả năng mở rộng phần mềm: mã nguồn tối ưu phép nhân đa thức chỉ cần viết một lần cho vành cố định và tái sử dụng cho mọi cấp độ bảo mật.
+
+%------------------------------------------------------------------------
+\subsection{Phép biến đổi NTT và các hàm băm mở rộng}\label{subsec:ntt-hash}
+
+\subsubsection{Phép biến đổi Number Theoretic Transform}\label{subsec:ntt}
+
+Number Theoretic Transform (NTT) là dạng tổng quát của biến đổi Fourier nhanh (FFT) trên trường hữu hạn, được đề xuất bởi Pollard \cite{Pollard71} dựa trên thuật toán Cooley--Tukey \cite{CooleyTukey65}. NTT cho phép nhân hai đa thức trong $R_q$ với độ phức tạp $O(n\log n)$ thay vì $O(n^2)$.
+
+\paragraph{Cơ sở toán học.} Giả sử $q$ nguyên tố và $\zeta\in\mathbb{Z}_q$ là căn nguyên thủy bậc $2n$ của đơn vị, khi đó $\zeta^n\equiv -1$ và
+\begin{equation}
+    X^n + 1 = \prod_{i=0}^{n-1} \bigl(X - \zeta^{2i+1}\bigr) \pmod q .
+\end{equation}
+Theo định lý thặng dư Trung Hoa, ánh xạ $a(X)\mapsto \bigl(a(\zeta^{2i+1})\bigr)_{i}$ là một đẳng cấu vành $R_q\cong \mathbb{Z}_q^n$, trong đó phép nhân trở thành phép nhân từng thành phần \cite{LyubashevskyPR13,Longa16}. Do đó
+\begin{equation}
+    a\cdot b = \mathrm{NTT}^{-1}\bigl(\mathrm{NTT}(a)\circ \mathrm{NTT}(b)\bigr),
+\end{equation}
+với $\circ$ là phép nhân từng phần tử.
+
+\paragraph{NTT không đầy đủ của Kyber.} Như đã nêu ở mục công thức~\eqref{eq:q1} trong mục~\ref{subsec:algebra}, $256\mid (q-1)$ nhưng $512\nmid (q-1)$, nên trong $\mathbb{Z}_{3329}$ chỉ có căn nguyên thủy bậc $256$ và $X^{256}+1$ chỉ phân rã đến các nhân tử bậc hai:
+\begin{equation}
+    X^{256}+1 = \prod_{i=0}^{127}\bigl(X^2 - \zeta^{2\,\mathrm{BitRev}_7(i)+1}\bigr), \qquad \zeta=17 .
+\end{equation}
+Vì vậy $R_q \cong \prod_{i=0}^{127}\mathbb{Z}_q[X]/(X^2-\gamma_i)$, và NTT của Kyber chỉ thực hiện $7$ tầng thay vì $8$ tầng, biểu diễn đa thức bằng $128$ cặp hệ số \cite{Avanzi21,FIPS203}. Phép nhân trong miền NTT là phép nhân $128$ cặp đa thức bậc một:
+\begin{equation}
+    (a_0+a_1X)(b_0+b_1X) \bmod (X^2-\gamma) = (a_0b_0 + a_1b_1\gamma) + (a_0b_1+a_1b_0)X .
+\end{equation}
+
+\paragraph{Cấu trúc thuật toán.} NTT thuận dùng các phép \textit{butterfly} kiểu Cooley--Tukey: từ $(u,v)$ tính $(u+\omega v,\; u-\omega v)$, còn NTT ngược dùng butterfly kiểu Gentleman--Sande \cite{GentlemanSande66}: $(u+v,\;\omega(u-v))$. Cách kết hợp hai kiểu này cho phép bỏ bước hoán vị bit-reversal, được áp dụng rộng rãi trong các cài đặt lưới hiệu năng cao \cite{Longa16,Seiler18}. Số phép cộng/trừ và nhân theo $q$ của một NTT là $O(n\log n)$.
+
+\paragraph{Số học modulo.} Vì $q=3329$ chỉ cần 12 bit nên hệ số lưu trong số nguyên 16 bit. Các phép rút gọn modulo hiệu quả và không rẽ nhánh thường dùng rút gọn Montgomery \cite{Montgomery85} và rút gọn Barrett \cite{Barrett86}. Tính hằng thời gian và tính đúng đắn của các phép rút gọn này là điểm cần đặc biệt lưu ý khi phân tích bảo mật kênh bên.
+
+\paragraph{Tính tuyến tính của NTT.} NTT là ánh xạ $\mathbb{Z}_q$-tuyến tính, tức $\mathrm{NTT}(a+b)=\mathrm{NTT}(a)+\mathrm{NTT}(b)$. Tính chất này cho phép che mặt nạ cộng tính trực tiếp trong miền NTT mà không cần chuyển đổi, và là cơ sở của các giải pháp phòng thủ được xem xét ở mục~\ref{subsec:phongthu}.
+
+\subsubsection{Các hàm băm mở rộng}\label{subsec:hash}
+
+Kyber sử dụng họ hàm băm SHA-3 dựa trên hoán vị Keccak-$f[1600]$ với cấu trúc \textit{sponge} \cite{Keccak11,FIPS202}. Trạng thái $1600$ bit được chia thành phần tốc độ (\textit{rate}) $r$ và phần dung lượng (\textit{capacity}) $c=1600-r$. Dữ liệu được đưa vào theo từng khối $r$ bit rồi đưa ra đầu ra. Hàm băm có đầu ra độ dài tùy ý được gọi là hàm đầu ra mở rộng (\textit{eXtendable-Output Function}, XOF), chính là SHAKE-128 và SHAKE-256 \cite{FIPS202}.
+
+Các hàm băm được dùng trong Kyber và vai trò của chúng được tổng hợp trong Bảng~\ref{tab:hash}.
+
+\begin{table}[H]
+\centering
+\caption{Các hàm băm trong Kyber (theo \cite{Avanzi21,FIPS203}).}
+\label{tab:hash}
+\begin{tabular}{l|l|p{8cm}}
+\hline
+\textbf{Ký hiệu} & \textbf{Hàm cụ thể} & \textbf{Vai trò} \\ \hline
+XOF & SHAKE-128 & Sinh ma trận công khai $\mathbf{A}$ từ hạt giống $\rho$ \\
+PRF & SHAKE-256 & Sinh dữ liệu ngẫu nhiên cho lấy mẫu CBD từ hạt giống bí mật và bộ đếm \\
+$H$ & SHA3-256 & Băm khóa công khai và bản mã \\
+$G$ & SHA3-512 & Sinh cặp hạt giống, khóa/ngẫu nhiên hóa trong biến đổi Fujisaki--Okamoto \\
+KDF & SHAKE-256 & Sinh khóa chia sẻ (ở đặc tả vòng 3) \\ \hline
+\end{tabular}
+\end{table}
+
+Mỗi phần tử $a_{ij}\in R_q$ được sinh bằng $\mathrm{XOF}(\rho, j, i)$: luồng byte được cắt thành các giá trị $12$ bit và chỉ giữ lại giá trị nhỏ hơn $q$. Xác suất chấp nhận mỗi giá trị là $3329/4096\approx 81{,}3\%$ \cite{Avanzi21}. Vì $\rho$ là thông tin công khai nên sự biến thiên thời gian của việc loại bỏ không làm lộ bí mật. Ngược lại, hạt giống của PRF là bí mật, nên phần cài đặt SHAKE-256 và Keccak-$f$ là bề mặt kênh bên cần bảo vệ.
+
+\paragraph{Vai trò trong an toàn CCA.} Các hàm $H$ và $G$ là thành phần của biến đổi Fujisaki--Okamoto, còn được gọi ngắn gọn là biến đổi FO, chuyển sơ đồ mã hóa an toàn CPA thành cơ chế đóng gói khóa an toàn CCA2 trong mô hình oracle ngẫu nhiên (và mô hình oracle ngẫu nhiên lượng tử) \cite{Bos18,Avanzi21}. Bước giải mã và mã hóa lại trong FO là điểm mà nhiều tấn công kênh bên và tấn công lỗi nhắm tới \cite{Ravi20,PesslProkop21}.
+
+%========================================================================
+\section{Thuật toán đóng gói khóa CRYSTALS-Kyber}\label{sec:kyber}
+%------------------------------------------------------------------------
+\subsection{Quy trình sinh khóa, đóng gói và mở gói}\label{subsec:quytrinh}
+
+Kyber được xây dựng theo hai lớp: (i) sơ đồ mã hóa khóa công khai an toàn CPA, ký hiệu CPAPKE (tương ứng K-PKE trong FIPS 203), và (ii) biến đổi Fujisaki--Okamoto để thu được KEM an toàn CCA2 \cite{Bos18,Avanzi21}. Trước khi đi vào mô tả cụ thể hơn về hai lớp này, mục~\ref{subsec:cbd} và~\ref{subsec:compress} trình bày hai công cụ được CPAPKE sử dụng: lấy mẫu nhiễu CBD và phép nén.
+
+\subsubsection{Phân phối nhị thức trung tâm}\label{subsec:cbd}
+
+Để bảo đảm tính an toàn của Module-LWE, véc tơ bí mật và véc tơ nhiễu phải có hệ số nhỏ. Nhiều hệ mật mã dựa trên lưới trước đây dùng phân phối Gauss rời rạc, nhưng việc lấy mẫu Gauss thường phức tạp và khó cài đặt hằng thời gian. Kyber, kế thừa từ thuật toán NewHope, thay thế bằng phân phối nhị thức trung tâm \cite{Alkim16,Avanzi21}.
+
+\begin{dn}
+    Với tham số nguyên dương $\eta$, phân phối nhị thức trung tâm $\chi_\eta$ là phân phối của biến ngẫu nhiên
+    \begin{equation}
+        x = \sum_{i=1}^{\eta} (a_i - b_i), \qquad a_i, b_i \xleftarrow{\$} \{0,1\}\ \text{độc lập}.
+    \end{equation}
+\end{dn}
+
+Vì $\sum a_i + \sum b_i \sim \mathrm{Bin}(2\eta,\tfrac12)$ nên hàm khối xác suất là
+\begin{equation}
+    \Pr[x=k] = \frac{\binom{2\eta}{\eta+k}}{2^{2\eta}}, \qquad k\in\{-\eta,\dots,\eta\},
+\end{equation}
+với kỳ vọng $0$ và phương sai $\eta/2$. Các giá trị cụ thể được cho trong Bảng~\ref{tab:cbd}.
+
+\begin{table}[H]
+\centering
+\caption{Hàm khối xác suất của $\chi_\eta$ với các giá trị $\eta$ dùng trong Kyber.}
+\label{tab:cbd}
+{\renewcommand{\arraystretch}{2}
+\begin{tabular}{c|ccccccc}
+\hline
+$k$ & $-3$ & $-2$ & $-1$ & $0$ & $1$ & $2$ & $3$ \\ \hline
+$\eta=2$ & -- & $\dfrac{1}{16}$ & $\dfrac{4}{16}$ & $\dfrac{6}{16}$ & $\dfrac{4}{16}$ & $\dfrac{1}{16}$ & -- \\
+$\eta=3$ & $\dfrac{1}{64}$ & $\dfrac{6}{64}$ & $\dfrac{15}{64}$ & $\dfrac{20}{64}$ & $\dfrac{15}{64}$ & $\dfrac{6}{64}$ & $\dfrac{1}{64}$ \\ \hline
+\end{tabular}}
+\end{table}
+
+Trong đặc tả Kyber, $\eta_1=3$ cho Kyber512 và $\eta_1=2$ cho Kyber768 và Kyber1024, trong khi $\eta_2=2$ cho cả ba bộ tham số \cite{Avanzi21,FIPS203}. Để lấy mẫu một đa thức $n=256$ hệ số từ $\chi_\eta$ cần $256\cdot 2\eta$ bit ngẫu nhiên, tức $64\eta$ byte, được sinh ra từ hàm giả ngẫu nhiên PRF (mục~\ref{subsec:hash}).
+
+\paragraph{Ý nghĩa đối với cài đặt và kênh bên.} Việc lấy mẫu CBD chỉ gồm các phép cộng số bit và trừ, không cần bảng tra hay phép so sánh rẽ nhánh, nên dễ dàng cài đặt bằng các phép toán bit hằng thời gian, chẳng hạn như cộng song song trọng số Hamming của từng nhóm bit trong một từ 32 bit). Ngược lại, bộ lấy mẫu Gauss thường có luồng điều khiển phụ thuộc giá trị mẫu, tạo ra rò rỉ kênh bên. Đây là một lý do thiết kế quan trọng của Kyber \cite{Bos18,Avanzi21}. Tuy nhiên, các phép toán trung gian trên đa thức bí mật vẫn có thể bị khai thác bởi tấn công kênh bên, chẳng hạn qua rò rỉ năng lượng hoặc điện từ \cite{Primas17,Ravi20}, và đây là động cơ cho các kỹ thuật tăng cường trong những chương sau.
+
+\subsubsection{Kỹ thuật nén và giải nén}\label{subsec:compress}
+
+Để giảm kích thước bản mã, Kyber làm tròn các hệ số về ít bit hơn bằng phép nén.
+
+\begin{dn}
+    Với số nguyên $d<\lceil\log_2 q\rceil$, ta định nghĩa
+    \begin{align}
+        \mathrm{Compress}_q(x,d) &= \left\lceil \frac{2^d}{q}\cdot x \right\rfloor \bmod 2^d,\\
+        \mathrm{Decompress}_q(y,d) &= \left\lceil \frac{q}{2^d}\cdot y \right\rfloor,
+    \end{align}
+    trong đó $\lceil\cdot\rfloor$ là làm tròn về số nguyên gần nhất (làm tròn lên khi ở giữa) \cite{Avanzi21,FIPS203}.
+\end{dn}
+
+Các phép này được áp dụng cho từng hệ số của đa thức. Phép nén là mất mát thông tin: với $x'=\mathrm{Decompress}_q(\mathrm{Compress}_q(x,d),d)$ thì sai số thỏa
+\begin{equation}
+    |x'-x \bmod^{\pm} q| \le \left\lceil \frac{q}{2^{d+1}}\right\rfloor .
+\end{equation}
+Sai số này đóng vai trò như một thành phần nhiễu bổ sung trong giải mã và được tính vào xác suất lỗi giải mã \cite{Bos18,Avanzi21}.
+
+\paragraph{Mã hóa thông điệp.} Thông điệp $m\in\{0,1\}^{256}$ được xem là đa thức có hệ số nhị phân và được ánh xạ bằng $\mathrm{Decompress}_q(m_i,1)=\lceil q/2\rfloor m_i = 1665\, m_i$. Khi giải mã, $\mathrm{Compress}_q(x,1)=1$ khi và chỉ khi $x$ gần $q/2$ hơn gần $0$, tức $x\in[833,2496]$. Do đó giải mã đúng miễn là nhiễu tích lũy có trị tuyệt đối nhỏ hơn $\approx q/4$.
+
+\paragraph{Liên hệ với kênh bên.} Cách cài đặt tự nhiên của $\mathrm{Compress}$ dùng phép chia số nguyên cho $q$ trên dữ liệu bí mật. Trên nhiều nền tảng, phép chia có thời gian thực thi phụ thuộc toán hạng, dẫn đến các tấn công thời gian thu hồi khóa bí mật, được biết đến với tên KyberSlash \cite{KyberSlash24}. Cách khắc phục là thay phép chia bằng phép nhân với hằng số và dịch bit, đảm bảo tính không đổi về thời gian.
+
+\subsubsection{Sơ đồ mã hóa CPAPKE}\label{subsec:cpapke}
+
+Các ký hiệu $\mathrm{XOF}$, $\mathrm{PRF}$, $G$, $H$ theo Bảng~\ref{tab:hash}; $\mathrm{NTT}$ và $\circ$ theo mục~\ref{subsec:ntt}; $\hat{x}$ là ký hiệu dạng NTT của $x$; $\mathrm{CBD}_\eta$ là lấy mẫu từ $\chi_\eta$.
+
+\begin{center}
+\fbox{\begin{minipage}{0.95\textwidth}
+\textbf{CPAPKE.KeyGen()}
+\begin{enumerate}
+    \item $d \xleftarrow{\$}\{0,1\}^{256}$;\quad $(\rho,\sigma)\leftarrow G(d)$.
+    \item Sinh $\hat{\mathbf{A}}\in R_q^{k\times k}$ (đã ở miền NTT) từ $\mathrm{XOF}(\rho,j,i)$.
+    \item Lấy mẫu $\mathbf{s},\mathbf{e}\in R_q^k$ bằng $\mathrm{CBD}_{\eta_1}(\mathrm{PRF}(\sigma,\cdot))$.
+    \item $\hat{\mathbf{s}}\leftarrow\mathrm{NTT}(\mathbf{s})$;\quad $\hat{\mathbf{e}}\leftarrow\mathrm{NTT}(\mathbf{e})$.
+    \item $\hat{\mathbf{t}}\leftarrow\hat{\mathbf{A}}\circ\hat{\mathbf{s}}+\hat{\mathbf{e}}$.
+    \item $pk\leftarrow(\hat{\mathbf{t}}\,\|\,\rho)$;\quad $sk\leftarrow\hat{\mathbf{s}}$.
+\end{enumerate}
+\end{minipage}}
+\end{center}
+
+\begin{center}
+\fbox{\begin{minipage}{0.95\textwidth}
+\textbf{CPAPKE.Enc}$(pk, m\in\{0,1\}^{256}; r)$
+\begin{enumerate}
+    \item Tách $pk=(\hat{\mathbf{t}},\rho)$; tái tạo $\hat{\mathbf{A}}$ từ $\rho$.
+    \item Từ hạt giống $r$ lấy mẫu $\mathbf{r}\in R_q^k$ bằng $\mathrm{CBD}_{\eta_1}$ và $\mathbf{e}_1\in R_q^k$, $e_2\in R_q$ bằng $\mathrm{CBD}_{\eta_2}$.
+    \item $\hat{\mathbf{r}}\leftarrow\mathrm{NTT}(\mathbf{r})$.
+    \item $\mathbf{u}\leftarrow\mathrm{NTT}^{-1}(\hat{\mathbf{A}}^{T}\circ\hat{\mathbf{r}})+\mathbf{e}_1$.
+    \item $v\leftarrow\mathrm{NTT}^{-1}(\hat{\mathbf{t}}^{T}\circ\hat{\mathbf{r}})+e_2+\mathrm{Decompress}_q(m,1)$.
+    \item $c_1\leftarrow\mathrm{Compress}_q(\mathbf{u},d_u)$;\quad $c_2\leftarrow\mathrm{Compress}_q(v,d_v)$;\quad trả về $c=(c_1\,\|\,c_2)$.
+\end{enumerate}
+\end{minipage}}
+\end{center}
+
+\begin{center}
+\fbox{\begin{minipage}{0.95\textwidth}
+\textbf{CPAPKE.Dec}$(sk, c)$
+\begin{enumerate}
+    \item $\mathbf{u}'\leftarrow\mathrm{Decompress}_q(c_1,d_u)$;\quad $v'\leftarrow\mathrm{Decompress}_q(c_2,d_v)$.
+    \item $m'\leftarrow\mathrm{Compress}_q\!\bigl(v'-\mathrm{NTT}^{-1}(\hat{\mathbf{s}}^{T}\circ\mathrm{NTT}(\mathbf{u}')),\,1\bigr)$.
+\end{enumerate}
+\end{minipage}}
+\end{center}
+
+\paragraph{Tính đúng đắn.} Bỏ qua sai số nén, ta có
+\begin{equation}
+    v-\mathbf{s}^{T}\mathbf{u}
+    = (\mathbf{A}\mathbf{s}+\mathbf{e})^{T}\mathbf{r}+e_2+\lceil q/2\rfloor m-\mathbf{s}^{T}(\mathbf{A}^{T}\mathbf{r}+\mathbf{e}_1)
+    = \underbrace{\mathbf{e}^{T}\mathbf{r}+e_2-\mathbf{s}^{T}\mathbf{e}_1}_{\text{nhiễu nhỏ}}+\lceil q/2\rfloor m .
+\end{equation}
+Do đó giải mã đúng khi nhiễu tích lũy (kể cả sai số nén) có trị tuyệt đối nhỏ hơn $\approx q/4$, như đã nêu ở mục~\ref{subsec:compress}.
+
+\paragraph{Điểm rò rỉ tiềm năng.} Trong $\mathrm{Dec}$, đại lượng $\hat{\mathbf{s}}^{T}\circ\mathrm{NTT}(\mathbf{u}')$ là phép nhân giữa khóa bí mật và dữ liệu do kẻ tấn công cung cấp ($\mathbf{u}'$ suy ra từ bản mã). Đây là dạng tính toán điển hình mà DPA/CPA nhắm tới (mục~\ref{subsec:sca}).
+
+\subsubsection{Biến đổi Fujisaki--Okamoto và KEM an toàn CCA2}\label{subsec:fo}
+
+Phần này mô tả theo đặc tả Kyber vòng 3 \cite{Avanzi21}. Các điểm khác biệt với FIPS 203 được nêu ở cuối mục này.
+
+\begin{center}
+\fbox{\begin{minipage}{0.95\textwidth}
+\textbf{KEM.KeyGen()}
+\begin{enumerate}
+    \item $(pk,sk')\leftarrow\mathrm{CPAPKE.KeyGen}()$;\quad $z\xleftarrow{\$}\{0,1\}^{256}$.
+    \item $sk\leftarrow(sk'\,\|\,pk\,\|\,H(pk)\,\|\,z)$;\quad trả về $(pk,sk)$.
+\end{enumerate}
+\textbf{KEM.Encaps}$(pk)$
+\begin{enumerate}
+    \item $m\xleftarrow{\$}\{0,1\}^{256}$;\quad $m\leftarrow H(m)$.
+    \item $(\bar K,r)\leftarrow G(m\,\|\,H(pk))$.
+    \item $c\leftarrow\mathrm{CPAPKE.Enc}(pk,m;r)$.
+    \item $K\leftarrow\mathrm{KDF}(\bar K\,\|\,H(c))$;\quad trả về $(c,K)$.
+\end{enumerate}
+\textbf{KEM.Decaps}$(c,sk)$
+\begin{enumerate}
+    \item $m'\leftarrow\mathrm{CPAPKE.Dec}(sk',c)$.
+    \item $(\bar K',r')\leftarrow G(m'\,\|\,H(pk))$;\quad $c'\leftarrow\mathrm{CPAPKE.Enc}(pk,m';r')$.
+    \item Nếu $c'=c$ thì $K\leftarrow\mathrm{KDF}(\bar K'\,\|\,H(c))$; ngược lại $K\leftarrow\mathrm{KDF}(z\,\|\,H(c))$.
+\end{enumerate}
+\end{minipage}}
+\end{center}
+
+Cơ chế từ chối ngầm (\textit{implicit rejection}) ở bước 3 của $\mathrm{Decaps}$ làm cho bản mã không hợp lệ vẫn cho ra một khóa giả ngẫu nhiên, không để lộ lỗi giải mã cho kẻ tấn công ở mức giao thức. Tuy nhiên, bảo vệ này chỉ có hiệu lực ở mức logic. mở gói gồm giải mã (nhân với khóa bí mật), băm, mã hóa lại và so sánh bản mã, và mỗi bước đều có thể rò rỉ qua kênh bên trước khi kết quả so sánh được che đi \cite{Ravi20,Ueno22}.
+
+\paragraph{Khác biệt giữa ML-KEM và Kyber vòng 3.} Một số điểm khác biệt giữa ML-KEM (FIPS 203) và Kyber vòng 3 \cite{FIPS203,Avanzi21}: (i) thông điệp $m$ được dùng trực tiếp mà không băm $H(m)$ trước; (ii) khóa chia sẻ $K$ là đầu ra trực tiếp của $G(m\,\|\,H(pk))$, không qua $\mathrm{KDF}(\cdot\,\|\,H(c))$; (iii) khóa từ chối ngầm tính bằng $J(z\,\|\,c)$ với $J$ là SHAKE-256; (iv) hạt giống sinh khóa được ràng buộc với tham số $k$ qua $G(d\,\|\,k)$; (v) bổ sung các bước kiểm tra tính hợp lệ của khóa và bản mã. Các khác biệt này không làm thay đổi cấu trúc tính toán nhạy cảm của mở gói (giải mã, mã hóa lại, so sánh), nên các phân tích kênh bên trong luận văn áp dụng cho cả hai bản.
+
+%------------------------------------------------------------------------
+\subsection{Các cấp độ an toàn}\label{subsec:levels}
+
+Kyber có ba bộ tham số, tương ứng ba cấp độ an toàn của NIST (các cấp 1, 3 và 5, tương đương độ khó của việc tìm khóa AES-128, AES-192 và AES-256) \cite{Avanzi21,FIPS203}. Bảng~\ref{tab:params} tổng hợp các tham số. Ba bộ tham số tương ứng ML-KEM-512, ML-KEM-768 và ML-KEM-1024 trong FIPS 203.
+
+\begin{table}[H]
+\centering
+\caption{Các bộ tham số Kyber ($n=256$, $q=3329$) \cite{Avanzi21,FIPS203}.}
+\label{tab:params}
+\begin{tabular}{l|ccc}
+\hline
+\textbf{Tham số} & \textbf{Kyber512} & \textbf{Kyber768} & \textbf{Kyber1024} \\ \hline
+Chiều module $k$ & 2 & 3 & 4 \\
+Nhiễu $\eta_1$ & 3 & 2 & 2 \\
+Nhiễu $\eta_2$ & 2 & 2 & 2 \\
+$(d_u,d_v)$ & $(10,4)$ & $(10,4)$ & $(11,5)$ \\
+Cấp độ NIST & 1 & 3 & 5 \\
+Xác suất lỗi giải mã $\delta$ & $2^{-139}$ & $2^{-164}$ & $2^{-174}$ \\ \hline
+Khóa công khai (byte) & 800 & 1184 & 1568 \\
+Khóa bí mật (byte) & 1632 & 2400 & 3168 \\
+Bản mã (byte) & 768 & 1088 & 1568 \\
+Khóa chia sẻ (byte) & 32 & 32 & 32 \\ \hline
+\end{tabular}
+\end{table}
+
+Các kích thước trong bảng suy ra từ tham số: khóa công khai $384k+32$ byte, bản mã $32(d_uk+d_v)$ byte, khóa bí mật $768k+96$ byte. Do $n$ và $q$ cố định, mọi cấp độ dùng chung cùng một cài đặt phép nhân đa thức và NTT, chỉ khác số lượng đa thức trong véc tơ và ma trận. Điều này có hệ quả trực tiếp cho luận văn: một giải pháp bảo vệ ở cấp độ phép toán trên vành $R_q$ có thể áp dụng cho cả ba cấp độ, và chi phí bảo vệ tăng tỷ lệ với $k$. Phần thực nghiệm ở Chương~3 sử dụng Kyber1024 (mức an toàn cao nhất) làm đối tượng đánh giá chính.
+
+%========================================================================
+\section{Tổng quan các nghiên cứu liên quan}\label{sec:lienquan}
+%------------------------------------------------------------------------
+\subsection{Các công trình về tấn công kênh bên trên Kyber}\label{subsec:tancong}
+
+Các tấn công kênh bên vào mật mã dựa trên lưới có thể phân thành các hướng chính sau.
+
+\paragraph{Tấn công thời gian.} Các phép toán phụ thuộc dữ liệu bí mật như chia số nguyên hay rẽ nhánh có điều kiện tạo ra khác biệt về thời gian thực thi. Tấn công KyberSlash khai thác thời gian thực thi của phép chia trên dữ liệu bí mật trong cài đặt tham chiếu của Kyber, cả ở bước giải mã (KyberSlash1) lẫn ở phép nén trong bước mã hóa lại của mở gói (KyberSlash2), và thu hồi được khóa bí mật trong vài phút đến vài giờ trên một số nền tảng \cite{KyberSlash24}. Đây cũng là minh họa cho nhận định ở mục~\ref{subsec:compress}.
+
+\paragraph{Tấn công năng lượng/EM trên các phép toán đại số.} Primas và cộng sự trình bày tấn công chỉ dùng một vết năng lượng (\textit{single-trace}) vào cài đặt giải mã Ring-LWE dựa trên NTT, kể cả khi cài đặt đã được che mặt nạ, bằng phương pháp lan truyền niềm tin (\textit{belief propagation}) \cite{Primas17}. Kết quả này cho thấy NTT, với cấu trúc butterfly lặp lại và dữ liệu trung gian có thể dự đoán được, là bề mặt rò rỉ đáng kể.
+
+\paragraph{Tấn công khai thác biến đổi FO.} Ravi và cộng sự đề xuất các tấn công kênh bên tổng quát vào KEM an toàn CCA dựa trên lưới, khai thác rò rỉ ở các bước liên quan đến biến đổi FO để xây dựng oracle kiểm tra bản rõ, áp dụng được cho Kyber \cite{Ravi20}. Ueno và cộng sự khai thác rò rỉ ở bước mã hóa lại của mở gói \cite{Ueno22}. Điểm chung là các tấn công này nhắm vào các bước sau giải mã chứ không chỉ riêng phép nhân với khóa bí mật.
+
+\paragraph{Tấn công vào cài đặt có che mặt nạ.} Hamburg và cộng sự đề xuất tấn công bản mã chọn trước (\textit{chosen-ciphertext}) cần $k$ vết, nhắm vào các cài đặt Kyber có che mặt nạ \cite{Hamburg21}. Dubrova và cộng sự phá một cài đặt Kyber che mặt nạ bậc năm bằng kỹ thuật học sâu \cite{Dubrova23}. Điều này cho thấy che mặt nạ không tự động đảm bảo an toàn nếu cài đặt còn các điểm rò rỉ chưa được xử lý, hoặc nếu số phần chia không đủ lớn so với khả năng của kẻ tấn công.
+
+\paragraph{Tấn công lỗi.} Pessl và Prokop chỉ ra các tấn công lỗi (\textit{fault attack}) vào KEM dựa trên lưới an toàn CCA, kể cả Kyber \cite{PesslProkop21}. Hướng này nằm ngoài phạm vi luận văn.
+
+%------------------------------------------------------------------------
+\subsection{Các giải pháp phòng thủ hiện có và hạn chế}\label{subsec:phongthu}
+
+\subsubsection{Cài đặt hằng thời gian.} Đây là biện pháp nền tảng chống tấn công thời gian: tránh rẽ nhánh và truy cập bộ nhớ phụ thuộc dữ liệu bí mật, thay phép chia bằng phép nhân hằng số (mục~\ref{subsec:compress}). Các thư viện như pqm4 cung cấp cài đặt Kyber tối ưu cho ARM Cortex-M4 \cite{KannwischerRSS19}. Hạn chế là biện pháp này không chống được rò rỉ năng lượng và điện từ, vốn phụ thuộc vào giá trị dữ liệu chứ không chỉ vào thời gian.
+
+\subsubsection{Che mặt nạ.} Reparaz và cộng sự là những người đầu tiên đề xuất cài đặt Ring-LWE che mặt nạ, tận dụng tính tuyến tính của NTT để che cộng tính trong miền NTT và chỉ cần xử lý riêng bộ giải mã phi tuyến \cite{ReparazRVV15}. Oder và cộng sự mở rộng sang sơ đồ an toàn CCA2 \cite{Oder18}. Với Kyber, Bos và cộng sự đưa ra các cài đặt che mặt nạ bậc nhất và bậc cao \cite{Bos21}, còn Heinz và cộng sự tối ưu bản bậc nhất cho ARM Cortex-M4 \cite{Heinz22}. Khó khăn chính nằm ở các phép phi tuyến như nén, so sánh bản mã và hàm băm, vốn đòi hỏi chuyển đổi giữa che mặt nạ số học và che mặt nạ Boolean với chi phí lớn.
+
+\subsubsection{Che giấu.} Xáo trộn thứ tự các butterfly của NTT, chèn độ trễ ngẫu nhiên hay thêm nhiễu làm giảm tỷ số tín hiệu trên nhiễu \cite{MangardOP07}. Các kỹ thuật này có chi phí thấp hơn che mặt nạ nhưng không có chứng minh an toàn hình thức, và thường chỉ làm tăng số vết cần thiết chứ không loại bỏ hoàn toàn rò rỉ.
+
+\begin{table}[H]
+\centering
+\caption{So sánh các nhóm giải pháp phòng thủ.}
+\label{tab:defense}
+\begin{tabular}{p{2.8cm}|p{3.8cm}|p{3.8cm}|p{3.4cm}}
+\hline
+\textbf{Giải pháp} & \textbf{Nguyên lý} & \textbf{Ưu điểm} & \textbf{Hạn chế} \\ \hline
+Hằng thời gian & Loại bỏ phụ thuộc thời gian & Chi phí thấp, dễ kiểm chứng & Không chống năng lượng/EM \\ \hline
+Che mặt nạ & Chia bí mật thành nhiều phần chia ngẫu nhiên & Có cơ sở an toàn hình thức & Chi phí lớn ở phép phi tuyến; cài đặt phức tạp, dễ sai \\ \hline
+Che giấu & Giảm tỷ số tín hiệu trên nhiễu & Chi phí thấp & Không có chứng minh; chỉ tăng số vết cần thiết \\ \hline
+\end{tabular}
+\end{table}
+
+\paragraph{Khoảng trống nghiên cứu.} Từ các phân tích trên có thể rút ra ba nhận xét. Thứ nhất, các giải pháp mạnh (che mặt nạ bậc cao) có chi phí hiệu năng đáng kể, trong khi các thiết bị nhúng bị giới hạn về tài nguyên. Thứ hai, các tấn công gần đây \cite{Hamburg21,Dubrova23} cho thấy mỗi giải pháp cần được \textit{đánh giá thực nghiệm} chứ không chỉ dựa vào lập luận lý thuyết. Thứ ba, việc đánh giá thường thiếu sự so sánh có hệ thống giữa mức giảm rò rỉ (đo bằng TVLA, CPA) và chi phí hiệu năng. Luận văn này nhằm đề xuất một giải pháp tăng cường bảo mật cho Kyber, đánh giá cả mức rò rỉ lẫn chi phí hiệu năng của giải pháp đó, và phân tích sự đánh đổi giữa hai yếu tố này ở các chương sau.
+
+\end{document}
