@@ -84,5 +84,5 @@ def export_scatter_plots(num_trials=60, output_dir="images"):
     print(f"[+] Da luu: {path_blind}")
 
 if __name__ == "__main__":
-    export_scatter_plots(num_trials=60)
+    export_scatter_plots(num_trials=80)
     print("\n[OK] Hoan tat xuat toan bo bieu do scatter plot vao thu muc images/!")

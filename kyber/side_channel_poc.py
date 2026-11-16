@@ -179,7 +179,7 @@ def run_timing_poc(num_samples: int = 80) -> dict:
     print(f"\n  [NHAN XET]")
     print(f"  Ban goc:       |r| = {abs(r_orig):.3f} {'-- co nguy co lo timing' if abs(r_orig)>0.1 else '-- nhieu OS che lap'}")
     print(f"  Ban mat na r:  |r| = {abs(r_blind):.3f} {'-- van co tuong quan' if abs(r_blind)>0.1 else '-- timing khong tuong quan voi s [OK]'}")
-    print(f"  Overhead:      {overhead:+.1f}% (chi phi them mat na r rat thap)")
+    print(f"  Overhead:      {overhead:+.1f}% (chi phi them mat na r thap)")
 
     return {"r_orig": r_orig, "r_blind": r_blind, "r_ntt": r_orig,
             "cv_orig": cv_orig, "cv_blind": cv_blind, "overhead_pct": overhead,
@@ -242,7 +242,7 @@ def run_power_analysis_poc(num_trials: int = 120) -> dict:
     ora_std  = statistics.stdev(oracles)
 
     print(f"\n  [THONG KE ORACLE]")
-    print(f"  oracle = HW(c0) -- bien dong theo u (moi ciphertext khac nhau)")
+    print(f"  oracle = HW(c0) -- bien dong theo moi ciphertext khac nhau")
     print(f"  Mean = {ora_mean:.2f},  StdDev = {ora_std:.2f},  "
           f"Range = [{min(oracles)}, {max(oracles)}]  (HW toi da ~ {q.bit_length()} bit)")
 
@@ -251,26 +251,26 @@ def run_power_analysis_poc(num_trials: int = 120) -> dict:
     _eval_orig  = "TAN CONG THANH CONG!" if abs(r_orig)   > 0.5 else \
                   ("Co tuong quan"        if abs(r_orig)   > 0.2 else "Tuong quan yeu")
     _eval_blind = "THAT BAI - BI CHAN!"  if abs(r_blind) < 0.1 else \
-                  ("Con mot phan lo"      if abs(r_blind) < 0.3 else "Con nguy co")
-    print(f"  {'Ban goc (chua bao ve)':<30} {r_orig:>10.4f} {abs(r_orig):>8.4f} {_eval_orig:>22}")
-    print(f"  {'Ban co mat na r (bao ve)':<30} {r_blind:>10.4f} {abs(r_blind):>8.4f} {_eval_blind:>22}")
+                  ("Con mot phan"      if abs(r_blind) < 0.3 else "Con nguy co")
+    print(f"  {'Ban goc':<30} {r_orig:>10.4f} {abs(r_orig):>8.4f} {_eval_orig:>22}")
+    print(f"  {'Ban co mat na r':<30} {r_blind:>10.4f} {abs(r_blind):>8.4f} {_eval_blind:>22}")
     print(f"  {SEP}")
 
     reduction = (1 - abs(r_blind) / (abs(r_orig) + 1e-9)) * 100
     print(f"\n  Mat na r giam |r| tu {abs(r_orig):.4f} xuong {abs(r_blind):.4f}"
           f"  (giam {reduction:.1f}%)")
 
-    print(f"\n  [GIAI THICH]")
-    print(f"  Ban goc:      trace = oracle + nhieu_nho => |r| cao => ke tan cong")
-    print(f"                biet s_guess dung se co |r| cao, suy ra duoc thong tin ve s")
-    print(f"  Ban mat na r: trace = HW((s+r)*u) voi r ngau nhien moi lan")
-    print(f"                du ke tan cong biet s chinh xac, oracle va trace khong khop")
-    print(f"                => |r| ~ 0 => khong suy nguoc duoc s")
+    # print(f"\n  [GIAI THICH]")
+    # print(f"  Ban goc:      trace = oracle + nhieu_nho => |r| cao => ke tan cong")
+    # print(f"                biet s_guess dung se co |r| cao, suy ra duoc thong tin ve s")
+    # print(f"  Ban mat na r: trace = HW((s+r)*u) voi r ngau nhien moi lan")
+    # print(f"                du ke tan cong biet s chinh xac, oracle va trace khong khop")
+    # print(f"                => |r| ~ 0 => khong suy nguoc duoc s")
 
     if abs(r_blind) < 0.1:
         print(f"\n  => [HIEU QUA] Mat na r CHAN DUOC tan cong DPA!")
     else:
-        print(f"\n  => [CANH BAO] Chay voi nhieu mau hon (--samples 200) de ket luan chinh xac.")
+        print(f"\n  => [CANH BAO] Chay voi nhieu mau hon de ket luan chinh xac.")
 
     return {"r_orig": r_orig, "r_blind": r_blind, "r_ntt": r_orig,
             "reduction_pct": reduction,
@@ -321,7 +321,7 @@ if __name__ == "__main__":
     p_res = run_power_analysis_poc(num_trials=120)
 
     print(f"\n{'═'*66}")
-    print("  TOM TAT CUOI")
+    print("  TOM TAT")
     print(f"{'═'*66}")
     print(f"  Verify:         TAT CA PASS")
     print(f"  Overhead:       {t_res['overhead_pct']:+.1f}%")

@@ -217,7 +217,7 @@ Lớp `PolynomialRing` đại diện cho phần tử trong $R_q$, hỗ trợ:
 | **Hệ điều hành (khuyến nghị)** | **Ubuntu 24.04 LTS** trên **WSL2** (Windows 10/11 64-bit) |
 | **Python** | CPython **3.12.3** (bản mặc định của Ubuntu 24.04; đáp ứng ràng buộc `>=3.11,<3.13`) |
 | **Trình quản lý gói** | [Poetry](https://python-poetry.org/) `>=1.5.0` |
-| **Phần cứng thử nghiệm** | Intel Core (Family 6 Model 140, 8 luồng xử lý), RAM 15.73 GB (≈ 16 GB) |
+| **Phần cứng thử nghiệm** | 11th Gen Intel Core i5-1135G7 @ 2.40GHz (8 luồng xử lý), 7.6 GiB RAM cấp phát cho WSL2 (16 GB máy vật lý) |
 
 > **Vì sao Ubuntu 24.04?** Đây là bản LTS có sẵn Python 3.12 trong kho `apt` mặc định, khớp với ràng buộc phiên bản của dự án. Ubuntu 22.04 chỉ có Python 3.10 mặc định, còn các bản Ubuntu mới hơn (25.10, 26.04) mặc định dùng Python 3.13 trở lên, nằm ngoài phạm vi hỗ trợ của dự án.
 >
@@ -413,9 +413,9 @@ poetry run python export_figures.py
 
 | Thành phần | Thông số |
 |---|---|
-| **Hệ điều hành** | **Ubuntu 24.04 LTS (x86_64) trên WSL2** (host: Microsoft Windows 11 64-bit) |
-| **CPU** | Intel64 Family 6 Model 140 Stepping 1, GenuineIntel (8 luồng xử lý) |
-| **RAM** | 15.73 GB (≈ 16 GB) |
+| **Hệ điều hành** | **Ubuntu 24.04.5 LTS (x86_64) trên WSL2** (Kernel: `6.18.58.1-microsoft-standard-WSL2`, host: Windows 11) |
+| **CPU** | 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz (8 luồng xử lý) |
+| **RAM** | 7.6 GiB (cấp phát cho WSL2) / 16 GB RAM vật lý |
 | **Python Runtime** | CPython 3.12.3 64-bit (quản lý bởi Poetry, yêu cầu `>=3.11,<3.13`) |
 | **Vị trí mã nguồn khi đo** | `~/kyber` (hệ tệp ext4 của WSL, không dùng `/mnt/d`) |
 | **Tiêu chuẩn áp dụng** | NIST FIPS 203 (ML-KEM-1024), sử dụng biến đổi NTT trong vành $R_q$ |

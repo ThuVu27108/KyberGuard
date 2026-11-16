@@ -43,7 +43,7 @@ def _section(text: str) -> None:
 # ==============================================================================
 
 def verify(num_trials: int = 8) -> bool:
-    _section(f"BUOC 1 - VERIFY: Ket qua hai phien ban phai giong het nhau")
+    _section(f"1 - VERIFY")
 
     all_ok = True
     for i in range(num_trials):
@@ -60,10 +60,10 @@ def verify(num_trials: int = 8) -> bool:
         if not ok:
             all_ok = False
 
-    status = "TAT CA PASS" if all_ok else "CO LOI!"
+    status = "TAT CA PASS" if all_ok else "ERROR!"
     print(f"\n  Ket qua: {status}")
     if all_ok:
-        print(f"  => Chung minh: (v + r^T*u) - (s+r)^T*u = v - s^T*u  [dung]")
+        print(f"  => Chung minh (v + r^T*u) - (s+r)^T*u = v - s^T*u  [ket qua dung]")
     return all_ok
 
 
@@ -72,16 +72,16 @@ def verify(num_trials: int = 8) -> bool:
 # ==============================================================================
 
 def benchmark(num_samples: int = 60) -> dict:
-    _banner(f"BUOC 2 - BENCHMARK: So sanh thoi gian ({num_samples} mau)")
+    _banner(f"2 - BENCHMARK: So sanh thoi gian ({num_samples} mau)")
 
-    print(f"\n[1/3] Tao keypair Kyber1024...")
+    print(f"\n[1] Tao keypair Kyber1024...")
     t0 = time.perf_counter()
     private_key, public_key = ccakem_generate_keys()
     t_key = (time.perf_counter() - t0) * 1000
     sk = private_key[: 12 * k * n // 8]
     print(f"      Keygen: {t_key:.1f} ms")
 
-    print(f"\n[2/3] Sinh {num_samples} ciphertext...")
+    print(f"\n[2] Sinh {num_samples} ciphertext...")
     ciphertexts = []
     for _ in range(num_samples):
         c, _ = ccakem_encrypt(public_key)
@@ -95,7 +95,7 @@ def benchmark(num_samples: int = 60) -> dict:
             runs.append((time.perf_counter_ns() - t0) / 1_000)  # µs
         return statistics.median(runs)
 
-    print(f"\n[3/3] Do thoi gian (moi mau x 3 lan, lay trung vi)...")
+    print(f"\n[3] Do thoi gian")
     times_orig  = [_measure(decrypt, ct) for ct in ciphertexts]
     times_blind = [_measure(decrypt_blinded, ct) for ct in ciphertexts]
 
@@ -111,7 +111,7 @@ def benchmark(num_samples: int = 60) -> dict:
     s_blind = _stats(times_blind)
     overhead = (s_blind["mean"] - s_orig["mean"]) / s_orig["mean"] * 100
 
-    print(f"\n  {'Chi so':<16} {'Ban goc (us)':>14} {'Co mat na r (us)':>18} {'Diff':>8}")
+    print(f"\n  {'Chi so':<16} {'Ban goc':>14} {'Co mat na r':>18} {'Diff':>8}")
     print(f"  {SEP}")
     for key in ["mean", "stdev", "min", "max"]:
         diff = s_blind[key] - s_orig[key]
@@ -119,15 +119,15 @@ def benchmark(num_samples: int = 60) -> dict:
     print(f"  {SEP}")
     print(f"  {'Overhead mat na r':<16} {'':>14} {'':>18} {overhead:>+7.1f}%")
 
-    print(f"\n  [PHAN TICH]")
-    print(f"  Tai sao overhead nho ({overhead:.1f}%):")
-    print(f"    Mat na r chi them 1 tich vo huong (dot_product) bo sung.")
-    print(f"    NTT/INTT la phan lon chi phi, khong tang them.")
+    # print(f"\n  [PHAN TICH]")
+    # print(f"  Tai sao overhead nho ({overhead:.1f}%):")
+    # print(f"    Mat na r chi them 1 tich vo huong (dot_product) bo sung.")
+    # print(f"    NTT/INTT la phan lon chi phi, khong tang them.")
 
     if abs(overhead) < 20:
-        print(f"\n  [OK] Overhead {overhead:.1f}% nam trong muc chap nhan duoc (<20%).")
+        print(f"\n  [OK] Overhead {overhead:.1f}% chap nhan duoc.")
     elif abs(overhead) < 40:
-        print(f"\n  [TRUNG BINH] Overhead {overhead:.1f}%, co the chap nhan cho muc dich bao mat.")
+        print(f"\n  [TRUNG BINH] Overhead {overhead:.1f}%, chap nhan cho muc dich bao mat.")
     else:
         print(f"\n  [CAO] Overhead {overhead:.1f}%, can xem xet toi uu them.")
 
@@ -146,7 +146,7 @@ def benchmark(num_samples: int = 60) -> dict:
 # ==============================================================================
 
 def attack_simulation(num_samples: int = 60) -> dict:
-    _banner(f"BUOC 3 - TAN CONG: Mo phong DPA va kiem tra hieu qua")
+    _banner(f"3 - TAN CONG: Mo phong DPA va kiem tra hieu qua")
 
     from kyber.side_channel_poc import run_timing_poc, run_power_analysis_poc
 
@@ -172,11 +172,11 @@ def main():
                         help="Chi verify + timing, bo qua tan cong")
     args = parser.parse_args()
 
-    print("╔══════════════════════════════════════════════════════════════════╗")
-    print("║   Kyber: Ban goc vs Ban co mat na r -- Bao ve kenh ben          ║")
-    print("╚══════════════════════════════════════════════════════════════════╝")
-    print(f"\n  Phien ban goc:     decrypt()         -- Ban chuan FIPS 203, KHONG che mat na")
-    print(f"  Phien ban cai tien: decrypt_blinded() -- Ban CO che mat na r")
+    print("╔══════════════════════════════════════════╗")
+    print("║   Kyber: Ban goc vs Ban co mat na r      ║")
+    print("╚══════════════════════════════════════════╝")
+    # print(f"\n  Phien ban goc:     decrypt()         -- Ban chuan FIPS 203, KHONG che mat na")
+    # print(f"  Phien ban cai tien: decrypt_blinded() -- Ban CO che mat na r")
 
     # 1. Verify
     ok = verify(num_trials=args.trials)
@@ -195,26 +195,26 @@ def main():
         attack_r = None
 
     # Tong ket
-    _banner("KET QUA TONG HOP")
+    _banner("KET QUA")
     print(f"  [1] Tinh dung dan:    TAT CA PASS")
-    print(f"  [2] Overhead mat na:  {bench['overhead_pct']:+.1f}%  "
+    print(f"  [2] Overhead:  {bench['overhead_pct']:+.1f}%  "
           f"({'chap nhan duoc' if abs(bench['overhead_pct']) < 20 else 'can xem xet'})")
 
     if attack_r:
         pr = attack_r["power"]
         tr = attack_r["timing"]
         print(f"  [3] DPA correlation:")
-        print(f"      Ban goc:      |r| = {abs(pr['r_orig']):.4f}  => {'TAN CONG CO THE THANH CONG' if abs(pr['r_orig']) > 0.5 else 'tuong quan yeu (Python noise)'}")
+        print(f"      Ban goc:      |r| = {abs(pr['r_orig']):.4f}  => {'TAN CONG CO THE THANH CONG' if abs(pr['r_orig']) > 0.5 else 'tuong quan yeu'}")
         print(f"      Ban mat na r: |r| = {abs(pr['r_blind']):.4f}  => {'TAN CONG BI CHAN' if abs(pr['r_blind']) < 0.1 else 'con mot phan tuong quan'}")
         print(f"      Giam tuong quan: {pr['reduction_pct']:.1f}%")
         print(f"  [4] Timing overhead: {tr['overhead_pct']:+.1f}%")
 
-    print(f"\n  KET LUAN:")
-    print(f"  decrypt_blinded() la phien ban khuyen dung:")
-    print(f"    - Bao ve chong tan cong kenh ben (che giau bang r ngau nhien)")
-    print(f"    - Overhead nho ({bench['overhead_pct']:+.1f}%)")
-    print(f"    - Chinh xac 100% (ket qua giong het ban goc)")
-    print()
+    # print(f"\n  KET LUAN:")
+    # print(f"  decrypt_blinded() la phien ban khuyen dung:")
+    # print(f"    - Bao ve chong tan cong kenh ben (che giau bang r ngau nhien)")
+    # print(f"    - Overhead nho ({bench['overhead_pct']:+.1f}%)")
+    # print(f"    - Chinh xac 100% (ket qua giong het ban goc)")
+    # print()
 
 
 if __name__ == "__main__":
